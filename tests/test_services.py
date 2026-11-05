@@ -99,5 +99,32 @@ class SupervisorTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit,'选项不同'):module.control('start',False)
             spawn.assert_not_called()
 
+    def test_stopping_session_stops_services_before_terminating_watchdog(self):
+        import subprocess
+        module=load('stay_online');events=[]
+        with patch.object(module,'current',side_effect=[{'pid':123},None]),patch('subprocess.run',side_effect=lambda *a,**k:events.append('services-stop') or subprocess.CompletedProcess([],0)),patch.object(module.os,'kill',side_effect=lambda *a:events.append('signal')),patch('sys.stdout',new_callable=io.StringIO):
+            module.control('stop')
+        self.assertEqual(events,['services-stop','signal'])
+
+    def test_terminated_caffeinate_is_waited_for(self):
+        from unittest.mock import Mock
+        module=load('supervise');process=Mock();process.poll.return_value=None
+        module.release_awake(process)
+        process.terminate.assert_called_once();process.wait.assert_called_once_with(timeout=3)
+
+    def test_login_install_refuses_active_session_before_stopping_services(self):
+        import json,subprocess
+        module=load('login_service')
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);(root/'var').mkdir()
+            (root/'var/supervisor.json').write_text(json.dumps({'pid':123,'stamp':'stamp'}))
+            commands=[]
+            def run(command,**kwargs):
+                commands.append(command)
+                return subprocess.CompletedProcess(command,1 if command[0]=='launchctl' else 0,'stamp','')
+            with patch.object(module,'ROOT',root),patch.object(module.sys,'platform','darwin'),patch('pathlib.Path.home',return_value=root/'user'),patch('subprocess.run',side_effect=run),patch('sys.argv',['login_service.py','install']):
+                with self.assertRaisesRegex(SystemExit,'停止当前会话监管'):module.main()
+            self.assertFalse(any('services.py' in str(command) for command in commands))
+
 
 if __name__=='__main__':unittest.main()
