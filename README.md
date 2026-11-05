@@ -69,7 +69,7 @@ python3 -m dafeiyu.channel bind ACCOUNT SENDER
 
 ## 持续在线
 
-Mac 当前登录会话可用 `python3 scripts/stay_online.py start --keep-awake` 启动后台监管：接电时保持系统唤醒，检查进程、网关和微信渠道，有界恢复异常。屏幕可以休眠；合盖、关机、断网仍可能离线。`python3 scripts/stay_online.py stop` 停止。长期建议独立常开设备，详见 [持续在线方案](docs/always-on.md)。这不代表已解决本机登录自启的系统文件访问授权。
+Mac 可双击「启动微信常驻.command」，或在当前登录会话用 `python3 scripts/stay_online.py start --keep-awake` 启动后台监管：接电时保持系统唤醒，检查进程、网关和微信渠道，有界恢复异常。屏幕可以休眠；合盖、关机、断网仍可能离线。`python3 scripts/stay_online.py stop` 停止。长期建议独立常开设备，详见 [持续在线方案](docs/always-on.md)。这不代表已解决本机登录自启的系统文件访问授权。
 
 ## 运行与限制
 
