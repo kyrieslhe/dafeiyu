@@ -276,7 +276,7 @@ class Fish:
         return '已删除，并清空聊天上下文和共同日记，防止旧内容再次被带入。备份需单独清理。'
 
     def enqueue(self, kind, goal, due=None):
-        if kind not in ('reminder', 'draft', 'daily', 'research', 'code', 'reflect', 'explore', 'speech') or not goal.strip() or len(goal) > 6000:
+        if kind not in ('reminder', 'draft', 'daily', 'research', 'code', 'reflect', 'explore', 'speech', 'browser') or not goal.strip() or len(goal) > 6000:
             raise ValueError('无效任务类型或内容（1–6000 字符）。')
         due = self.clock() if due is None else due
         if due < self.clock()-60:
@@ -328,6 +328,9 @@ class Fish:
             if row['kind'] in ('research','explore'):
                 from .research import research
                 result, metadata = research(self.model, row['goal'],companion=True) if row['kind']=='explore' else research(self.model,row['goal'])
+            elif row['kind'] == 'browser':
+                from .browser import browse
+                result, metadata = browse(self.model, row['goal'], self.home, row['id'])
             elif row['kind'] == 'reflect':
                 episodes=self.rows('SELECT id,kind,content,created FROM episodes ORDER BY id DESC LIMIT 10')
                 if not episodes:raise ValueError('还没有足够的真实记录可整理。')
@@ -358,7 +361,7 @@ class Fish:
                 reports = self.home / 'reports'
                 reports.mkdir(exist_ok=True)
                 (reports / (row['id']+'.md')).write_text(result)
-                if row['kind'] in ('research','explore'):
+                if row['kind'] in ('research','explore','browser'):
                     (reports / (row['id']+'.sources.json')).write_text(json.dumps(metadata,ensure_ascii=False,indent=2))
             with self.db:
                 changed = self.db.execute("UPDATE tasks SET state=?,result=?,lease=NULL WHERE id=? AND state='running'", ('waiting_approval' if waiting else 'succeeded', result, row['id'])).rowcount
@@ -398,6 +401,10 @@ class Fish:
             from .memory import reject_secret
             reject_secret(argument)
             return '语音任务已入队：'+self.enqueue('speech',argument)
+        if command == '/browse':
+            from .memory import reject_secret
+            reject_secret(argument)
+            return '公开网页浏览任务已入队（最多三个页面，不登录或提交表单）：'+self.enqueue('browser',argument)
         if command == '/research':
             return '研究任务已入队：' + self.enqueue('research', argument)
         if command == '/code':

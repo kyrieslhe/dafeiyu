@@ -57,6 +57,10 @@ python3 -m dafeiyu.channel bind ACCOUNT SENDER
 
 可选 `python3 scripts/setup_speech.py` 安装固定版本的离线识别模型，之后接收微信插件已解码的短 WAV 语音。也可以说「用语音跟我说晚安」或「大肥鱼 /speak 内容」，由 Mac 系统声音生成音频附件。语音识别不上传音频，聊天仍消耗 Codex 额度；原生微信语音气泡尚未实现，详见 [语音指南](docs/voice.md)。
 
+## 公开网页浏览
+
+`python3 scripts/setup_browser.py` 安装固定的隔离 Chromium；「大肥鱼 /browse HTTPS地址 目标」可实际查看网页截图和正文，并沿页面链接继续，最多三个页面。浏览器无直接网络，公开资源经受限 HTTPS broker 提供，不使用私人浏览器账号。当前只读，不登录或提交表单；复杂站点可能部分加载，详见 [浏览指南](docs/browser.md)。
+
 ## 让它做事
 
 - **记忆与日记**：`/remember 内容`、`/memories`、`/forget 编号`、`/diary 内容`。只有明确记忆指令写入长期记忆；模型推断不自动变成事实。遗忘会同时清空聊天与共同日记；历史任务成果和旧备份需另行删除。

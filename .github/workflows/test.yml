@@ -82,3 +82,18 @@ jobs:
           python -m pip install --only-binary=:all: --require-hashes -r integrations/speech/requirements.txt
       - run: python -c "import faster_whisper, numpy, onnxruntime; print('Offline speech runtime imports passed')"
       - run: python -m unittest discover -s tests -p test_speech.py -v
+
+  browser:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+      - run: python scripts/setup_browser.py
+      - run: python -m unittest discover -s tests -p test_browser.py -v
+        env:
+          DAFEIYU_TEST_BROWSER: '1'
