@@ -18,7 +18,7 @@ def current():
         entry=json.loads((ROOT/'var/supervisor.json').read_text())
         result=subprocess.run(['ps','-p',str(entry['pid']),'-o','lstart='],capture_output=True,text=True,timeout=5)
         if entry.get('stamp') and entry['stamp']==result.stdout.strip():return entry
-    except (OSError,ValueError,KeyError,subprocess.TimeoutExpired):pass
+    except (OSError,ValueError,KeyError,TypeError,subprocess.TimeoutExpired):pass
     return None
 
 
