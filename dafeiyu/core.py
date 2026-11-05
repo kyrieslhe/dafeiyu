@@ -481,7 +481,7 @@ class Fish:
                 self.db.execute("DELETE FROM episodes WHERE kind='conversation'")
             return '聊天上下文已清空；明确记忆仍保留。'
         if command == '/status':
-            return {'version': '0.3.0', 'model_configured': self.model.ready, 'wechat': '插件桥接已实现；扫码与实测状态见 channels 命令',
+            return {'version': '0.4.0', 'model_configured': self.model.ready, 'wechat': '插件桥接已实现；扫码与实测状态见 channels 命令',
                     'paused': self.db.execute("SELECT value FROM settings WHERE key='paused'").fetchone()[0] == '1',
                     'tasks': self.rows('SELECT state,count(*) AS count FROM tasks GROUP BY state')}
         if command == '/help':
