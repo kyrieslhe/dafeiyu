@@ -33,6 +33,14 @@
       {
         "context": "speech",
         "app_id": 15368
+      },
+      {
+        "context": "browser",
+        "app_id": 15368
+      },
+      {
+        "context": "video",
+        "app_id": 15368
       }
     ]
   },
