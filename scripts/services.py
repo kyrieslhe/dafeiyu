@@ -8,6 +8,7 @@ import signal
 import subprocess
 import sys
 import time
+import urllib.request
 
 ROOT=Path(__file__).resolve().parent.parent
 STATE=ROOT/'var/services.json'
@@ -52,6 +53,12 @@ def main():
             time.sleep(.2)
             records[name]={'pid':process.pid,'stamp':stamp(process.pid)}
         STATE.write_text(json.dumps(records));os.chmod(STATE,0o600)
+        for _ in range(30):
+            try:
+                with urllib.request.urlopen('http://127.0.0.1:18791/health',timeout=.5) as response:
+                    if response.status==200:break
+            except OSError:time.sleep(.5)
+        else:print('Gateway is starting but HTTP readiness is not yet confirmed.',file=sys.stderr)
     print(json.dumps({name:('running' if active(entry) else 'stopped') for name,entry in records.items()},indent=2))
 
 if __name__=='__main__':main()
