@@ -44,3 +44,16 @@ jobs:
         with:
           python-version: '3.12'
       - run: python scripts/privacy_audit.py
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+          cache: npm
+          cache-dependency-path: integrations/runtime/package-lock.json
+      - run: npm ci --ignore-scripts --prefix integrations/runtime --no-fund
+      - run: node tests/runtime/compat.mjs integrations/runtime
+      - run: integrations/runtime/node_modules/.bin/openclaw --version
+      - run: npm audit --prefix integrations/runtime --audit-level=high
