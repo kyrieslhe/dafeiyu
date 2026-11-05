@@ -13,9 +13,12 @@ def tables(fish):
     CREATE TABLE IF NOT EXISTS channel_binding (singleton INTEGER PRIMARY KEY CHECK(singleton=1),account TEXT,sender TEXT,last_seen REAL);
     CREATE TABLE IF NOT EXISTS channel_candidates (account TEXT,sender TEXT,created REAL,PRIMARY KEY(account,sender));
     CREATE TABLE IF NOT EXISTS inbound (id TEXT PRIMARY KEY,state TEXT,reply TEXT,created REAL);
+    CREATE TABLE IF NOT EXISTS inbound_stats (id TEXT PRIMARY KEY,received REAL,finished REAL,outcome TEXT,media_count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS deliveries (outbox_id INTEGER PRIMARY KEY,state TEXT,error TEXT,updated REAL);
     ''')
     with fish.db:
+        fish.db.execute('DELETE FROM inbound_stats WHERE received<?',(fish.clock()-30*86400,))
+        fish.db.execute('UPDATE inbound SET reply=NULL WHERE created<?',(fish.clock()-30*86400,))
         fish.db.execute("UPDATE inbound SET state='interrupted',reply='上次处理已中断，未自动重放。' WHERE state='running' AND created<?",(fish.clock()-120,))
 
 
@@ -35,18 +38,21 @@ def inbound(fish, event):
         return '当前微信身份未绑定。'
     key = json.dumps([account,sender,message])
     with fish.db:
-        fish.db.execute('UPDATE channel_binding SET last_seen=? WHERE singleton=1', (fish.clock(),))
         inserted = fish.db.execute("INSERT OR IGNORE INTO inbound VALUES (?,'running',NULL,?)", (key,fish.clock())).rowcount
         if not inserted:
             # Never repeat a tool call or resend a full reply on duplicate provider delivery.
             prior=fish.db.execute('SELECT state FROM inbound WHERE id=?',(key,)).fetchone()
             if prior['state']=='interrupted':return '上次处理已中断，未自动重放；请重新发送一个新请求。'
             return '这条消息已处理或正在处理中；任务结果可用「大肥鱼 /tasks」查看。'
+        fish.db.execute('UPDATE channel_binding SET last_seen=? WHERE singleton=1',(fish.clock(),))
+        fish.db.execute("INSERT OR IGNORE INTO inbound_stats VALUES (?,?,NULL,'processing',?)",(key,fish.clock(),len(event.get('media',[])) if isinstance(event.get('media',[]),list) else 0))
+    outcome='completed'
     text=event.get('text','')
     media=event.get('media',[])
     if media and not text:text='请看看这张图片，和我聊聊。'
     if not isinstance(text,str) or not text.strip() or len(text)>12000:
         reply='只支持 1–12000 字符的文字消息。'
+        outcome='rejected'
     else:
         if text.startswith('大肥鱼 '): text=text[len('大肥鱼 '):].strip()
         try:
@@ -59,10 +65,13 @@ def inbound(fish, event):
             else:
                 result=fish.command(text)
             reply=result if isinstance(result,str) else json.dumps(result,ensure_ascii=False,indent=2)
-        except (ValueError,ModelError) as error: reply=str(error)
-        except Exception: reply='处理失败；请在本机查看任务状态。'
+        except (ValueError,ModelError) as error:
+            reply=str(error);outcome='failed'
+        except Exception:
+            reply='处理失败；请在本机查看任务状态。';outcome='failed'
     with fish.db:
         fish.db.execute("UPDATE inbound SET state='completed',reply=? WHERE id=?", (reply,key))
+        fish.db.execute('UPDATE inbound_stats SET finished=?,outcome=? WHERE id=?',(fish.clock(),outcome,key))
     return reply[:12000]
 
 
@@ -94,6 +103,20 @@ def main():
             with fish.db: fish.db.execute('DELETE FROM channel_binding')
             print('已解除绑定，后台投递将停止。')
     finally: fish.close()
+
+
+def health(fish):
+    tables(fish)
+    now=fish.clock()
+    rows=fish.rows('SELECT received,finished,outcome FROM inbound_stats WHERE received>?',(now-86400,))
+    durations=sorted(max(0,r['finished']-r['received']) for r in rows if r['finished'] is not None)
+    last=fish.db.execute('SELECT last_seen FROM channel_binding WHERE singleton=1').fetchone()
+    return {'inbound_24h':len(rows),'outcomes':{state:sum(r['outcome']==state for r in rows) for state in ('completed','failed','rejected','processing')},
+            'p95_processing_seconds':round(durations[max(0,(95*len(durations)+99)//100-1)],2) if durations else None,
+            'seconds_since_inbound':round(max(0,now-last['last_seen'])) if last and last['last_seen'] else None,
+            'task_states':fish.rows('SELECT state,count(*) AS count FROM tasks GROUP BY state'),
+            'delivery_states':fish.rows('SELECT state,count(*) AS count FROM deliveries GROUP BY state'),
+            'note':'本机处理与发送尝试统计；不代表微信送达、已读或平台延迟。重复来信不刷新主动投递窗口。'}
 
 
 if __name__=='__main__':main()

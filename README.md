@@ -75,6 +75,8 @@ python3 -m dafeiyu.channel bind ACCOUNT SENDER
 
 Mac 可双击「启动微信常驻.command」，或在当前登录会话用 `python3 scripts/stay_online.py start --keep-awake` 启动后台监管：接电时保持系统唤醒，检查进程、网关和微信渠道，有界恢复异常。屏幕可以休眠；合盖、关机、断网仍可能离线。`python3 scripts/stay_online.py stop` 停止。长期建议独立常开设备，详见 [持续在线方案](docs/always-on.md)。这不代表已解决本机登录自启的系统文件访问授权。
 
+用「大肥鱼 /health」查看最近 24 小时处理成功、失败、处理耗时与投递尝试。模型失败和任务超时会生成可查询的失败通知；发送仍遵守微信有效上下文与安静时间，不能把本机已处理当成微信已送达。
+
 ## 运行与限制
 
 `python3 scripts/services.py status|stop|restart` 管理本项目网关和 worker。进程日志在私人 var 目录；可通过 `python3 scripts/login_service.py install` 安装用户登录后台服务；当前项目位于 Documents，本机实测被系统文件访问权限拦截，已保持可用的手动后台运行，详见 [部署复核](docs/hardening.md)。Mac 休眠或退出登录时不执行；没有安装登录项时需手动重新启动。

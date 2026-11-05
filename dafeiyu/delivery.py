@@ -16,7 +16,7 @@ def deliver(fish, runner=subprocess.run):
         binding=fish.db.execute('SELECT * FROM channel_binding WHERE singleton=1').fetchone()
         if not binding: return None
         row=fish.db.execute('''SELECT o.*,t.kind FROM outbox o JOIN tasks t ON t.id=o.task_id
-          LEFT JOIN deliveries d ON d.outbox_id=o.id WHERE o.seen=0 AND t.state IN ('succeeded','waiting_approval')
+          LEFT JOIN deliveries d ON d.outbox_id=o.id WHERE o.seen=0 AND t.state IN ('succeeded','waiting_approval','failed')
           AND (d.outbox_id IS NULL OR (d.state='waiting_context' AND d.updated<?)) ORDER BY o.id LIMIT 1''',(binding['last_seen'],)).fetchone()
         if not row:return None
         fresh=0<=now-binding['last_seen']<90

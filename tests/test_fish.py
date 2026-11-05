@@ -87,7 +87,8 @@ class FishTests(unittest.TestCase):
         self.fish.enqueue('draft', '主题')
         self.fish.tick()
         self.assertEqual(self.fish.command('/tasks')[0]['state'], 'failed')
-        self.assertEqual(self.fish.command('/inbox'), [])
+        self.assertEqual(len(self.fish.command('/inbox')),1)
+        self.assertIn('没有完成',self.fish.command('/inbox')[0]['content'])
         with self.assertRaises(ModelError):
             self.fish.chat('你好')
         self.assertEqual(self.fish.rows('SELECT * FROM messages'), [])
