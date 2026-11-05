@@ -279,7 +279,7 @@ class Fish:
         return '已删除，并清空聊天上下文和共同日记，防止旧内容再次被带入。备份需单独清理。'
 
     def enqueue(self, kind, goal, due=None):
-        if kind not in ('reminder', 'draft', 'daily', 'research', 'code', 'reflect', 'explore', 'speech', 'browser') or not goal.strip() or len(goal) > 6000:
+        if kind not in ('reminder', 'draft', 'daily', 'research', 'code', 'reflect', 'explore', 'speech', 'browser', 'video') or not goal.strip() or len(goal) > 6000:
             raise ValueError('无效任务类型或内容（1–6000 字符）。')
         due = self.clock() if due is None else due
         if due < self.clock()-60:
@@ -347,6 +347,9 @@ class Fish:
             elif row['kind'] == 'browser':
                 from .browser import browse
                 result, metadata = browse(self.model, row['goal'], self.home, row['id'])
+            elif row['kind'] == 'video':
+                from .video import analyze
+                result,metadata=analyze(self.model,json.loads(row['goal']),self.home,row['id'])
             elif row['kind'] == 'reflect':
                 episodes=self.rows('SELECT id,kind,content,created FROM episodes ORDER BY id DESC LIMIT 10')
                 if not episodes:raise ValueError('还没有足够的真实记录可整理。')
@@ -370,14 +373,16 @@ class Fish:
             elif row['kind'] == 'reminder':
                 late = '（已错过原定时间）' if now-row['due'] > 60 else ''
                 result = '🐳 提醒' + late + '：' + row['goal']
-            else:
+            elif row['kind'] in ('daily','draft'):
                 prompt = ('写一小段今日相处札记，区分已知经历与愿望，不编造今日活动。' if row['kind'] == 'daily' else '生成未联网核实的草稿，清楚标注猜测和待核查点：') + row['goal']
                 result = '【模型生成，未联网核实】\n' + self.model.reply(self.context(prompt))
+            else:
+                raise ValueError('当前运行版本不支持该任务类型，未执行。')
             if not waiting and self.db.execute('SELECT state FROM tasks WHERE id=?', (row['id'],)).fetchone()[0] == 'running':
                 reports = self.home / 'reports'
                 reports.mkdir(exist_ok=True)
                 (reports / (row['id']+'.md')).write_text(result)
-                if row['kind'] in ('research','explore','browser'):
+                if row['kind'] in ('research','explore','browser','video'):
                     (reports / (row['id']+'.sources.json')).write_text(json.dumps(metadata,ensure_ascii=False,indent=2))
             with self.db:
                 changed = self.db.execute("UPDATE tasks SET state=?,result=?,lease=NULL WHERE id=? AND state='running'", ('waiting_approval' if waiting else 'succeeded', result, row['id'])).rowcount

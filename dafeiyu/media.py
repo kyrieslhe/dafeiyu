@@ -70,3 +70,26 @@ def staged_audio(home,items):
     with tempfile.TemporaryDirectory(prefix='audio-',dir=staging) as directory:
         target=Path(directory)/'voice.wav';target.write_bytes(data);target.chmod(0o600)
         yield str(target)
+
+
+def store_video(home,items):
+    import uuid
+    if not isinstance(items,list) or len(items)!=1:raise MediaError('一次请发一个短视频。')
+    home=Path(home).resolve();root=home/'gateway/media/inbound';item=items[0]
+    if not isinstance(item,dict) or not isinstance(item.get('path'),str):raise MediaError('未收到本地视频附件。')
+    path=Path(item['path'])
+    if not path.is_absolute() or path.resolve()!=path or not path.is_relative_to(root) or root.resolve()!=root:raise MediaError('视频不在微信入站目录，未读取文件。')
+    try:
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        with os.fdopen(fd,'rb') as stream:
+            info=os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or not 0<info.st_size<=20*1024*1024:raise MediaError('视频限 20MB，请剪短后再发。')
+            data=stream.read(20*1024*1024+1)
+    except OSError:raise MediaError('视频无法读取，请重新发送。') from None
+    if len(data)>20*1024*1024:raise MediaError('视频超过 20MB。')
+    if data[4:8]==b'ftyp':suffix='.mp4'
+    elif data.startswith(b'\x1aE\xdf\xa3'):suffix='.webm'
+    else:raise MediaError('目前支持 MP4/MOV 或 WebM 短视频。')
+    directory=home/'media/video-inputs';directory.mkdir(mode=0o700,parents=True,exist_ok=True)
+    target=directory/(uuid.uuid4().hex+suffix);target.write_bytes(data);target.chmod(0o600)
+    return target

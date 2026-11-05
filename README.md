@@ -112,3 +112,5 @@ CI 在 Python 3.9/3.12、Node 26 和真实 Docker 中检查，不使用私人认
 [加密恢复与常驻](docs/recovery.md) · [完整接入与安全边界](docs/connected-setup.md) · [验证记录](docs/verification.md) · [原始目标规格](proposal.md)
 
 源码与原创 SVG 形象采用 [MIT](LICENSE) 许可；第三方运行时遵循各自许可。
+
+短视频理解开发预览：绑定后可提交已下载短片，后台最多采样四帧，并在本机离线转写前 60 秒音轨。需要 Docker 和 `python3 scripts/setup_video.py`；限制与实际验证见 [短视频说明](docs/video.md)。真实微信视频入站仍待验证。
