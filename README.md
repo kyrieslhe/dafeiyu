@@ -1,8 +1,10 @@
 # 🐳 大肥鱼
 
-有自己的口吻、长期记忆和共同日记的私人 AI 伙伴。通过官方 Codex CLI 使用已登录 ChatGPT 账号的可用额度；没有默认付费 API 备用路线。受 DeepSeek 蓝鲸社区形象启发，不是 DeepSeek 官方产品，不包含他人的角色图片或人设卡。
+![大肥鱼原创形象](assets/whale.svg)
 
-**v0.5：加密快照、删除感知恢复、登录常驻，以及 自然语言动作、真实用量记录、中文话题记忆、真实活动时间线、待确认经验与限额兴趣探索，以及 微信私聊桥接、带实际来源的联网研究、容器隔离的 Python 编程候选与审批。** 本机已验证微信登录、身份绑定与真实模型聊天，研究和容器编程均完成真实调用；消息窗口和跨日稳定性仍需持续观察。详细证据见 [验证记录](docs/verification.md)。
+有自己的口吻、长期记忆和共同日记的私人 AI 伙伴。通过官方 Codex CLI 使用已登录 ChatGPT 账号的可用额度；没有默认付费 API 备用路线。受 DeepSeek 蓝鲸社区形象启发，是独立社区项目，不是 DeepSeek 或 OpenAI 官方产品，不包含他人的角色图片或人设卡。
+
+**v0.5.1 预览版：加密快照、删除感知恢复、登录常驻，以及 自然语言动作、真实用量记录、中文话题记忆、真实活动时间线、待确认经验与限额兴趣探索，以及 微信私聊桥接、带实际来源的联网研究、容器隔离的 Python 编程候选与审批。** 本机已验证微信登录、身份绑定与真实模型聊天，研究和容器编程均完成真实调用；消息窗口和跨日稳定性仍需持续观察。详细证据见 [验证记录](docs/verification.md)。
 
 ## 本地开始
 
@@ -65,7 +67,7 @@ python3 -m dafeiyu.channel bind ACCOUNT SENDER
 
 ## 运行与限制
 
-`python3 scripts/services.py status|stop|restart` 管理本项目网关和 worker。进程日志在私人 var 目录；可通过 `python3 scripts/login_service.py install` 安装用户登录后台服务。Mac 休眠或退出登录时不执行；没有安装登录项时需手动重新启动。
+`python3 scripts/services.py status|stop|restart` 管理本项目网关和 worker。进程日志在私人 var 目录；可通过 `python3 scripts/login_service.py install` 安装用户登录后台服务；当前项目位于 Documents，本机实测被系统文件访问权限拦截，已保持可用的手动后台运行，详见 [部署复核](docs/hardening.md)。Mac 休眠或退出登录时不执行；没有安装登录项时需手动重新启动。
 
 平台消息不保证随时可推送。本地只在最近真实来信后的保守窗口尝试；窗口失效等待新消息，超时记为 delivery_unknown，不盲目重发；accepted 不等于已读。23:00–08:00 除明确提醒外不主动投递，完整成果始终可以查询。服务额度耗尽不会自动购买或切换付费 API。
 
@@ -82,3 +84,5 @@ DAFEIYU_TEST_DOCKER=1 python3 -m unittest discover -s tests -p test_docker.py -v
 CI 在 Python 3.9/3.12、Node 26 和真实 Docker 中检查，不使用私人认证。支持 age 加密快照和在新目录中演练恢复，详见 [恢复指南](docs/recovery.md)。升级前停止服务并保留私人备份。凭据、数据库、来源正文与报告均不得提交 Git。
 
 [加密恢复与常驻](docs/recovery.md) · [完整接入与安全边界](docs/connected-setup.md) · [验证记录](docs/verification.md) · [原始目标规格](proposal.md)
+
+源码与原创 SVG 形象采用 [MIT](LICENSE) 许可；第三方运行时遵循各自许可。
