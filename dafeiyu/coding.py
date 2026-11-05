@@ -6,6 +6,7 @@ from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
 import uuid
+import unicodedata
 
 
 from .core import ModelError
@@ -18,10 +19,14 @@ class CodingError(ModelError):
 def digest(data): return hashlib.sha256(data).hexdigest()
 
 
+TEXT_SUFFIXES={'.py','.md','.txt','.toml','.json','.yaml','.yml'}
+
+
 def safe_relative(value):
     path = PurePosixPath(value)
     if not value or path.is_absolute() or '\\' in value or any(p in ('..', '.', '.git') or p.startswith('.') for p in path.parts):
         raise CodingError('候选路径非法或包含隐藏目录。')
+    if path.as_posix()!=value:raise CodingError('候选路径必须使用规范的相对路径，不能重复分隔符或点目录。')
     if len(path.parts) > 10: raise CodingError('路径过深。')
     return path
 
@@ -33,14 +38,24 @@ def snapshot(project):
         relative = path.relative_to(project)
         if any(p.startswith('.') or p in ('__pycache__', 'node_modules', 'var') for p in relative.parts): continue
         if not path.is_file(): continue
-        if path.suffix not in ('.py', '.md', '.txt', '.toml', '.json', '.yaml', '.yml'): continue
+        if path.suffix not in TEXT_SUFFIXES: continue
         data = path.read_bytes()
         if len(data) > 100000: raise CodingError('单文件超出 100KB。')
         try: files[relative.as_posix()] = data.decode()
-        except UnicodeDecodeError: continue
+        except UnicodeDecodeError: raise CodingError('项目文本无法按 UTF-8 读取，未生成候选。') from None
         if len(files) > 80 or sum(len(v) for v in files.values()) > 300000:
             raise CodingError('项目超出首版快照预算。')
     return files
+
+
+def validate_changes(original,changes):
+    seen={}
+    for name in list(original)+list(changes):
+        path=safe_relative(name)
+        if path.suffix not in TEXT_SUFFIXES:raise CodingError('只允许受支持的文本文件，不覆盖二进制或未收录文件。')
+        key=unicodedata.normalize('NFC',name).casefold()
+        if key in seen and seen[key]!=name:raise CodingError('存在大小写或 Unicode 等价路径，拒绝有歧义的候选。')
+        seen[key]=name
 
 
 def container_test(directory, name, cancelled=lambda:False):
@@ -107,6 +122,7 @@ def propose(model, root, project_name, goal, task_id, home):
     for name, content in changes.items():
         safe_relative(name)
         if not isinstance(content, str) or len(content) > 100000: raise CodingError('候选文件无效。')
+    validate_changes(original,changes)
     stage = Path(home) / 'code' / task_id
     stage.mkdir(parents=True, exist_ok=False)
     combined = dict(original); combined.update(changes)
@@ -128,12 +144,14 @@ def apply(root, payload):
     project = Path(root).resolve() / payload['project']
     if project.is_symlink() or not project.is_dir(): raise CodingError('项目路径已经改变。')
     current = snapshot(project)
+    validate_changes(current,payload['files'])
     hashes = {name: digest(content.encode()) for name,content in current.items()}
     if hashes != payload['original_hashes']: raise CodingError('项目在审批后有变更，必须重新生成并测试。')
     # Check all destinations before writing anything. Apply only reviewed textual files.
     for name in payload['files']:
         safe_relative(name)
         target = project / name
+        if target.exists() and name not in payload['original_hashes']:raise CodingError('目标未被原快照收录，拒绝覆盖。')
         if target.exists() and not target.is_file(): raise CodingError('目标不是普通文件。')
         if not target.resolve().is_relative_to(project.resolve()): raise CodingError('目标路径逃逸。')
     try:
