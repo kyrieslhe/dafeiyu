@@ -42,7 +42,10 @@ def setup(home):
     secrets.mkdir(mode=0o700,exist_ok=True);os.chmod(secrets,0o700)
     key=secrets/'recovery.agekey'
     if key.is_symlink():raise BackupError('恢复密钥不能是符号链接。')
-    if not key.exists():run([keygen,'-o',str(key)])
+    if not key.exists():
+        if (secrets/'recipient.txt').exists() or any((home/'backups').glob('*.age')):
+            raise BackupError('已有备份公钥但恢复密钥缺失；请找回原密钥，不会自动生成新密钥覆盖旧身份。')
+        run([keygen,'-o',str(key)])
     os.chmod(key,0o600)
     recipient=run([keygen,'-y',str(key)])
     if not recipient.startswith('age1') or len(recipient)>200:raise BackupError('恢复公钥格式错误。')
@@ -136,11 +139,14 @@ def restore(home,encrypted,target,key=None):
                 path=content/member.name;path.parent.mkdir(parents=True,exist_ok=True)
                 path.write_bytes(archive.extractfile(member).read());os.chmod(path,0o600)
         manifest=json.loads((content/'manifest.json').read_text())
+        if not isinstance(manifest,dict) or not isinstance(manifest.get('files'),dict):raise BackupError('恢复清单格式错误。')
         actual={p.relative_to(content).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in content.rglob('*') if p.is_file() and p.name!='manifest.json'}
         if manifest.get('files')!=actual:raise BackupError('恢复文件哈希不匹配。')
         checked=sqlite3.connect(content/'fish.sqlite')
         try:
             if checked.execute('PRAGMA quick_check').fetchone()[0]!='ok':raise BackupError('恢复数据库校验失败。')
+            names={row[0] for row in checked.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if not {'memories','tasks','outbox','settings'}<=names:raise BackupError('恢复文件不是有效的大肥鱼数据库。')
         finally:checked.close()
         # Only move validated content into a brand new private directory.
         target.parent.mkdir(parents=True,exist_ok=True);shutil.move(str(content),str(target));os.chmod(target,0o700)

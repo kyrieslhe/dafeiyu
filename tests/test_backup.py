@@ -39,6 +39,13 @@ class EncryptedRecovery(unittest.TestCase):
             self.assertEqual(recovered.command('/tasks')[0]['state'],'queued')
             self.assertFalse((target/'secrets').exists())
         finally:recovered.close()
+    def test_missing_existing_key_does_not_silently_rotate_identity(self):
+        key=self.home/'secrets/recovery.agekey';recipient=self.home/'secrets/recipient.txt'
+        before=recipient.read_text();key.unlink()
+        with self.assertRaises(BackupError):setup(self.home)
+        self.assertEqual(recipient.read_text(),before)
+        self.assertFalse(key.exists())
+
     def test_existing_target_is_never_overwritten(self):
         encrypted=snapshot(self.home)
         target=Path(self.tmp.name)/'existing';target.mkdir();(target/'keep').write_text('unchanged')
