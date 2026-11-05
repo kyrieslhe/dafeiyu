@@ -1,4 +1,5 @@
 """Local single-user identity gate; no WeChat protocol or credential access."""
+import signal
 import argparse
 import json
 import sqlite3
@@ -18,7 +19,7 @@ def tables(fish):
 
 def inbound(fish, event):
     tables(fish)
-    if event.get('channel') != 'openclaw-weixin' or event.get('group'):
+    if event.get('channel') != 'openclaw-weixin' or event.get('group') is not False:
         return '只支持绑定用户的微信文字私聊。'
     account, sender, message = (event.get(k) for k in ('account','sender','message_id'))
     if not all(isinstance(x,str) and x for x in (account,sender,message)):
@@ -53,6 +54,9 @@ def inbound(fish, event):
 
 
 def main():
+    def interrupted(_signum, _frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, interrupted)
     parser=argparse.ArgumentParser()
     parser.add_argument('--home',default='var')
     parser.add_argument('action',choices=['inbound','status','bind','unbind'])

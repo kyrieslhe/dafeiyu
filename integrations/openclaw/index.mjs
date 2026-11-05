@@ -1,5 +1,12 @@
 import {spawn} from 'node:child_process';
 
+export function stableSender(event, context) {
+  // Tencent 2.4.10 sets From=To=OriginatingTo=from_user_id, but omits SenderId.
+  // OpenClaw 2026.10.10 projects OriginatingTo into conversationId without lowercasing.
+  const directPeer = event.isGroup === false && /^[A-Za-z0-9_-]+@im\.wechat$/.test(context.conversationId || '') ? context.conversationId : undefined;
+  return context.senderId || event.senderId || directPeer;
+}
+
 export function bridge(config, event, context) {
   return new Promise((resolve) => {
     const child = spawn(config.python, ['-m', 'dafeiyu.channel', '--home', config.home, 'inbound'], {
@@ -27,9 +34,9 @@ export function bridge(config, event, context) {
     child.stdin.end(JSON.stringify({
       channel:context.channelId || event.channel,
       account:context.accountId,
-      sender:context.senderId || event.senderId,
+      sender:stableSender(event,context),
       message_id:context.messageId || event.messageId,
-      group:Boolean(event.isGroup),
+      group:event.isGroup !== false,
       text:event.content || event.body || ''
     }));
   });

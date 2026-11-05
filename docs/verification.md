@@ -30,3 +30,30 @@
 
 - https://developers.openai.com/codex/noninteractive ：官方非交互 CLI、stdin 与最终回复输出流程。
 - https://github.com/Tencent/openclaw-weixin ：微信后续接入参考，本次未安装。
+
+# v0.2 接入验证补充
+
+日期：2026-11-05，Asia/Hong_Kong。
+
+## 本机真实验证
+
+- 已校验并安装 Node v26.13.0 arm64；固定 OpenClaw 2026.10.10（CLI 显示 7dc3350）、腾讯插件 2.4.10。npm 完整锁文件及注册表来源记录位于 integrations/runtime，安装到私人 var。插件采用公开 before_dispatch API；activation.onStartup=true。
+- 本人完成微信扫码。曾遇到登录结束时网关未运行及插件 inventory retired 提示，凭据实际已保存；网关启动后 channels status 显示 reachable、configured、running。未重复提取或复制凭据。
+- 实测发现腾讯插件未设置 SenderId；已依据锁定源码将其私聊 OriginatingTo/conversationId 的稳定平台用户 ID 映射为 sender，保留大小写，并增加回归测试。没有用昵称鉴权。
+- 本人确认绑定提示后，本机将唯一近期候选身份绑定。随后收到真实微信消息，桥接使用 Codex 生成并保存回复。此证据覆盖登录、入站、身份绑定和模型回复生成；后台主动投递及平台送达结果另记录，不据此宣称跨日必达。
+- 真实 Codex 原生搜索发现 Python 官方页面；HTTPS 抓取成功，综合报告引用实际来源并记录抓取时间及 SHA256。另完成给定 URL 的研究，Markdown 和 sources.json 均已落盘。模型综合会出错，抓取记录不等于事实真实性认证。
+- 真实 Codex 为 hello 示例生成修复和四项 unittest；固定 Python 镜像在无网络容器测试通过，原项目未自动变化。
+- 在独立临时示例中再次真实生成 subtract 功能、容器测试、waiting_approval、精确摘要审批及应用，全流程通过；没有对用户项目自动提交或发布。
+- 真实容器边界测试：无法访问宿主 Codex 凭据和 Docker socket，项目及根文件系统不可写，外网 socket 连接失败。首版只支持小型无第三方依赖的 Python 项目，不承诺抵御容器运行时未知漏洞。
+
+## 自动验证
+
+- Python 测试 25 项（启用 Docker 时全通过；默认跳过 1 项 Docker 测试）。涵盖记忆、任务、身份、去重、SSRF 地址检查、投递不确定性、审批、项目变化及真实容器隔离。
+- Node 3 项：插件公开 API 注册、JS→Python 真实传输、腾讯私聊稳定 ID 映射与群聊拒绝。
+- 模型失败、额度不足不会触发自动付费备用。取消轮询终止 Codex 进程组或对应容器；HTTPS 抓取在当前连接超时后退出。
+
+## 仍需观察
+
+- 尚未完成 20 次微信消息延迟统计、2 分钟/1 小时/跨日投递窗口测试，以及主机真实休眠恢复的长期观察。模拟时钟测试不替代平台验证。
+- 应用候选文件时若系统中断，可能已有部分文件写入；审批已消费，任务需人工检查并重新生成，不自动重放。
+- 没有自动加密备份、语义记忆索引、多媒体理解或任意语言依赖安装。服务还未安装系统登录启动项。

@@ -267,7 +267,7 @@ class Fish:
         text = text.strip()
         aliases = {'状态':'/status','查看记忆':'/memories','待汇报':'/inbox','暂停自主任务':'/pause','继续':'/resume'}
         text = aliases.get(text,text)
-        for prefix, replacement in [('记住 ','/remember '),('记住：','/remember '),('忘记 ','/forget '),('研究一下 ','/research '),('帮我研究 ','/research '),('帮我修改项目 ','/code ')]:
+        for prefix, replacement in [('记住我','/remember 我'),('记住 ','/remember '),('记住：','/remember '),('忘记 ','/forget '),('研究一下 ','/research '),('帮我研究一下 ','/research '),('帮我查一下 ','/research '),('帮我研究 ','/research '),('帮我修改项目 ','/code ')]:
             if text.startswith(prefix):
                 text = replacement + text[len(prefix):]; break
         command, _, argument = text.partition(' ')
@@ -278,6 +278,13 @@ class Fish:
             project, _, goal = argument.partition(' ')
             if not project or not goal: raise ValueError('格式：/code 项目名 功能目标')
             return '编程任务已入队：' + self.enqueue('code', json.dumps({'project':project,'goal':goal}, ensure_ascii=False))
+        if command == '/projects':
+            root=self.home / 'projects'
+            return sorted(p.name for p in root.iterdir() if p.is_dir() and not p.is_symlink() and not p.name.startswith('.')) if root.exists() else []
+        if command == '/deliveries':
+            from .channel import tables
+            tables(self)
+            return self.rows('SELECT * FROM deliveries ORDER BY updated DESC LIMIT 30')
         if command == '/result':
             rows = self.rows('SELECT state,result,error FROM tasks WHERE id=?', (argument,))
             return rows or '没有这个任务。'

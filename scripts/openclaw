@@ -1,6 +1,6 @@
 #!/bin/zsh
 set -eu
 cd "${0:A:h:h}"
-export PATH="$PWD/var/runtime/node-v26.13.0-darwin-arm64/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS:$PATH"
+export PATH="$PWD/var/runtime/node/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS:$PATH"
 export OPENCLAW_STATE_DIR="$PWD/var/gateway"
 exec "$PWD/var/openclaw/node_modules/.bin/openclaw" "$@"

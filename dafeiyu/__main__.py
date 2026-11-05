@@ -1,3 +1,4 @@
+import signal
 import argparse
 import json
 import time
@@ -5,6 +6,9 @@ from .core import Fish, HELP, ModelError
 
 
 def main():
+    def interrupted(_signum, _frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, interrupted)
     parser = argparse.ArgumentParser(description='🐳 大肥鱼私人伙伴')
     parser.add_argument('--home', default='var', help='私人数据目录（默认 ./var）')
     parser.add_argument('mode', nargs='?', default='chat', choices=['chat', 'worker', 'doctor', 'setup', 'run'])

@@ -11,7 +11,10 @@ from html.parser import HTMLParser
 from urllib.parse import urlsplit, urljoin
 
 
-class ResearchError(RuntimeError):
+from .core import ModelError
+
+
+class ResearchError(ModelError):
     pass
 
 

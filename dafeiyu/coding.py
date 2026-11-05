@@ -8,7 +8,10 @@ import subprocess
 import uuid
 
 
-class CodingError(RuntimeError):
+from .core import ModelError
+
+
+class CodingError(ModelError):
     pass
 
 
@@ -41,30 +44,49 @@ def snapshot(project):
 
 
 def container_test(directory, name, cancelled=lambda:False):
+    import selectors
+    import time
     image = os.environ.get('DAFEIYU_CODE_IMAGE', 'python@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db')
-    command = ['docker', 'run', '--rm', '--name', name, '--network=none', '--read-only',
+    command = ['docker', 'create', '--pull=never', '--name', name, '--network=none', '--read-only',
                '--cap-drop=ALL', '--security-opt=no-new-privileges', '--pids-limit=64',
                '--memory=256m', '--cpus=1', '--user=65534:65534', '--tmpfs', '/tmp:rw,noexec,nosuid,size=32m',
                '--mount', 'type=bind,src=%s,dst=/work,readonly' % directory,
                '--workdir=/work', '--env', 'PYTHONDONTWRITEBYTECODE=1', image,
                'python', '-m', 'unittest', 'discover', '-s', 'tests', '-v']
-    import time
+    process = None
     try:
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        start = time.monotonic()
-        while True:
-            if cancelled() or time.monotonic()-start>60:
-                raise subprocess.TimeoutExpired(command,60)
-            try:
-                output,_=process.communicate(timeout=0.25)
-                return process.returncode, output[-16000:]
-            except subprocess.TimeoutExpired: continue
+        created = subprocess.run(command, capture_output=True, timeout=15)
+        if created.returncode:
+            raise CodingError('容器创建失败；检查 Docker 和固定镜像是否已准备。不在宿主机降级执行。')
+        process = subprocess.Popen(['docker','start','--attach',name], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        output = bytearray(); start = time.monotonic()
+        with selectors.DefaultSelector() as selector:
+            selector.register(process.stdout, selectors.EVENT_READ)
+            while selector.get_map():
+                if cancelled() or time.monotonic()-start>60:
+                    raise CodingError('容器已取消或超过 60 秒限制。')
+                for key,_ in selector.select(.2):
+                    chunk = os.read(key.fd, 8192)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    output.extend(chunk)
+                    if len(output)>65536: raise CodingError('测试输出超过 64KB，已停止容器。')
+        process.wait(timeout=5)
+        inspected = subprocess.run(['docker','inspect','--format','{{.State.ExitCode}}',name], capture_output=True, text=True, timeout=5)
+        if inspected.returncode: raise CodingError('无法确认容器退出状态。')
+        return int(inspected.stdout.strip()), output.decode(errors='replace')
     except (subprocess.TimeoutExpired, KeyboardInterrupt):
-        subprocess.run(['docker', 'rm', '-f', name], capture_output=True, timeout=10)
-        process.kill(); process.communicate()
         raise CodingError('容器超时或中断，已请求终止容器。') from None
     except OSError:
         raise CodingError('Docker 不可用；不在宿主机降级执行。') from None
+    finally:
+        try: subprocess.run(['docker','rm','-f',name],capture_output=True,timeout=10)
+        except (OSError,subprocess.TimeoutExpired): pass
+        if process is not None:
+            if process.poll() is None:
+                process.kill(); process.communicate()
+            if process.stdout is not None: process.stdout.close()
 
 
 def propose(model, root, project_name, goal, task_id, home):
@@ -114,6 +136,9 @@ def apply(root, payload):
         target = project / name
         if target.exists() and not target.is_file(): raise CodingError('目标不是普通文件。')
         if not target.resolve().is_relative_to(project.resolve()): raise CodingError('目标路径逃逸。')
-    for name, content in payload['files'].items():
-        target = project / name; target.parent.mkdir(parents=True, exist_ok=True); target.write_text(content)
+    try:
+        for name, content in payload['files'].items():
+            target = project / name; target.parent.mkdir(parents=True, exist_ok=True); target.write_text(content)
+    except OSError:
+        raise CodingError('文件应用中断，可能已有部分文件写入；审批已消费，请检查差异后重新生成。') from None
     return '已应用经过容器测试的候选修改；未提交、推送或发布。'
