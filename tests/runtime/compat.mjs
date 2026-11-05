@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {resolve} from 'node:path';
+const root=resolve(process.argv[2]||'integrations/runtime');
+const require=createRequire(root+'/package.json');
+const {minimatch}=require('minimatch');
+assert.equal(minimatch('workspace/project/main.py','workspace/**/*.py'),true);
+assert.equal(minimatch('workspace/project/.env','workspace/**'),false);
+assert.equal(minimatch('var/private.sqlite','workspace/**'),false);
+assert.equal(minimatch('README.md','*.md'),true);
+const z=require('zod');
+assert.equal(z.object({id:z.string()}).safeParse({id:'owner'}).success,true);
+assert.equal(z.array(z.string()).max(2).safeParse(['a','b','c']).success,false);
+const plugin=await import(root+'/node_modules/@tencent-weixin/openclaw-weixin/dist/index.js');
+assert.equal(plugin.default.id,'openclaw-weixin');
+console.log('Runtime imports and glob/schema compatibility passed.');
