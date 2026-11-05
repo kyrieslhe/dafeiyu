@@ -300,7 +300,10 @@ class Fish:
                         self.db.execute("INSERT OR IGNORE INTO tasks(id,kind,goal,state,due,created) VALUES (?,'daily',?,'queued',?,?)", (identifier, routine['goal'], now, now))
                         self.db.execute('UPDATE routines SET last_day=? WHERE id=?', (day, routine['id']))
         with self.db:
+            expired=self.rows("SELECT id FROM tasks WHERE state='running' AND lease<?",(now,))
             self.db.execute("UPDATE tasks SET state='failed',error='运行中断或超时；请重新创建任务' WHERE state='running' AND lease<?", (now,))
+            for item in expired:
+                self.db.execute('INSERT OR IGNORE INTO outbox(task_id,content) VALUES (?,?)',(item['id'],'任务 '+item['id']+' 已中断或超时，没有完成；请查看 /result '+item['id']+'，需要时重新创建。'))
             if self.db.execute("SELECT value FROM settings WHERE key='paused'").fetchone()[0] == '1':
                 return None
             row = self.db.execute("SELECT * FROM tasks WHERE state='queued' AND due<=? ORDER BY due LIMIT 1", (now,)).fetchone()
@@ -354,7 +357,9 @@ class Fish:
         except Exception as error:
             safe = str(error) if isinstance(error, (ModelError, ValueError)) or error.__class__.__name__ in ('ResearchError', 'CodingError') else '任务处理失败（%s），未产生结果。' % type(error).__name__
             with self.db:
-                self.db.execute("UPDATE tasks SET state='failed',error=?,lease=NULL WHERE id=? AND state='running'", (safe, row['id']))
+                failed=self.db.execute("UPDATE tasks SET state='failed',error=?,lease=NULL WHERE id=? AND state='running'", (safe, row['id'])).rowcount
+                if failed:
+                    self.db.execute('INSERT OR IGNORE INTO outbox(task_id,content) VALUES (?,?)',(row['id'],'任务 '+row['id']+' 没有完成：'+safe+'\n查看：大肥鱼 /result '+row['id']))
         finally:
             self.flush_usage(row['id'])
             if isinstance(self.model, Model): self.model.cancelled = lambda: False
@@ -377,6 +382,9 @@ class Fish:
             project, _, goal = argument.partition(' ')
             if not project or not goal: raise ValueError('格式：/code 项目名 功能目标')
             return '编程任务已入队：' + self.enqueue('code', json.dumps({'project':project,'goal':goal}, ensure_ascii=False))
+        if command == '/health':
+            from .channel import health
+            return health(self)
         if command == '/usage':
             rows=self.rows('SELECT provider,model,usage,duration,success,created FROM model_usage WHERE created>? ORDER BY id DESC',(self.clock()-86400,))
             totals={}
@@ -508,6 +516,7 @@ HELP = '''🐳 大肥鱼 · 本地私人伙伴
 /daily                排队生成一次相处札记，需要模型
 /routine 21:00 主题    授权每天生成一次札记（消耗模型额度）\n/routines /unroutine 编号   查看／移除计划\n/tasks                查看任务与错误
 /cancel 任务编号       取消任务
+/health              查看处理失败、延迟与投递状态
 /pause /resume        暂停或恢复新任务
 /inbox /ack 编号      查看待汇报／标记查看
 /clear                清空聊天上下文
