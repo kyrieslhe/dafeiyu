@@ -13,7 +13,7 @@ def initialize(fish):
     INSERT OR IGNORE INTO life_plan(singleton) VALUES (1);
     ''')
     with fish.db:
-        fish.db.execute('DELETE FROM episodes WHERE created<?',(fish.clock()-90*86400,))
+        fish.db.execute("DELETE FROM episodes WHERE created<? OR (kind='conversation' AND created<?)",(fish.clock()-90*86400,fish.clock()-30*86400))
 
 
 def record(fish,source,kind,content):
@@ -49,7 +49,9 @@ def command(fish,name,argument):
         with fish.db:fish.db.execute('UPDATE memory_meta SET importance=1 WHERE memory_id=?',(int(argument),))
         return '已取消常驻。'
     if name=='/timeline':
-        return fish.rows('SELECT * FROM episodes ORDER BY id DESC LIMIT 20')
+        rows=fish.rows('SELECT * FROM episodes ORDER BY id DESC LIMIT 20')
+        for row in rows:row['at']=datetime.fromtimestamp(row['created'],ZoneInfo('Asia/Hong_Kong')).isoformat()
+        return rows
     if name=='/reflect':
         return '整理任务已入队：'+fish.enqueue('reflect','根据真实记录整理一个可能值得保留的经验；不要把推断当事实。')
     if name=='/reflections':return fish.rows("SELECT * FROM reflections WHERE state='pending' ORDER BY id DESC LIMIT 20")

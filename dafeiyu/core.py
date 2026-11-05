@@ -152,7 +152,7 @@ class Model:
                     event=json.loads(line)
                     if event.get('type')=='turn.completed':usage=event.get('usage',{})
                 except (ValueError,AttributeError):pass
-            self.record_usage(usage,time.monotonic()-started,process.returncode==0)
+            self.record_usage(usage,time.monotonic()-started,process.returncode==0 and output.exists() and output.stat().st_size>0)
             if process.returncode != 0 or not output.exists():
                 raise ModelError('Codex 调用失败。请运行 codex login status 检查登录与额度；不自动切换 API。')
             result = output.read_text().strip()
@@ -256,6 +256,7 @@ class Fish:
             self.db.execute('DELETE FROM messages')
             self.db.execute('DELETE FROM diary')
             self.db.execute('DELETE FROM episodes')
+            self.db.execute("DELETE FROM memories WHERE id IN (SELECT memory_id FROM memory_meta WHERE source LIKE 'reflection:%')")
             self.db.execute('DELETE FROM reflections')
             self.db.execute('DELETE FROM recall_log')
         self.db.execute('PRAGMA wal_checkpoint(TRUNCATE)')
@@ -492,7 +493,7 @@ class Fish:
 
 
 HELP = '''🐳 大肥鱼 · 本地私人伙伴
-直接输入文字聊天（需要配置模型）；以下命令无需模型：
+直接输入文字聊天；管理命令本地执行，聊天与生成任务会消耗模型额度：
 /recall 关键词         按话题召回记忆（不消耗模型）\n/interest 主题         添加兴趣；/life on 10:00 授权每日探索\n/life off /timeline   关闭自主探索／查看真实活动\n/reflect /reflections 整理待确认经验；/accept 编号 确认\n/remember 内容        明确记住一件事
 /memories             查看记忆
 /forget 编号          删除记忆，并清空历史与日记
@@ -505,5 +506,5 @@ HELP = '''🐳 大肥鱼 · 本地私人伙伴
 /pause /resume        暂停或恢复新任务
 /inbox /ack 编号      查看待汇报／标记查看
 /clear                清空聊天上下文
-/status /help /quit   状态／帮助／退出
+/usage               查看本应用记录的真实用量\n/status /help /quit   状态／帮助／退出
 运行 worker 后后台任务才会执行；终端不会主动推送微信。'''

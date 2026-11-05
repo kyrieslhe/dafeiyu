@@ -95,6 +95,22 @@ class MemoryLife(unittest.TestCase):
         self.fish=Fish(self.tmp.name,Model(),lambda:self.now)
         self.assertEqual(self.fish.command('/recall 早期记忆')[0]['content'],'早期记忆')
         self.assertEqual(len(self.fish.rows('SELECT * FROM memory_fts')),1)
+    def test_forget_also_clears_derived_accepted_experience(self):
+        self.fish.remember('原始偏好')
+        from dafeiyu.memory import remember
+        remember(self.fish,'从原始偏好推导的经验',kind='experience',source='reflection:1')
+        self.fish.forget(1)
+        self.assertEqual(self.fish.command('/memories'),[])
+
+    def test_conversation_excerpt_retention_matches_raw_chat(self):
+        record(self.fish,'chat:old','conversation','旧聊天摘录')
+        record(self.fish,'task:old','research','已完成的真实研究')
+        self.now+=31*86400
+        self.fish.close();self.fish=Fish(self.tmp.name,Model(),lambda:self.now)
+        events=self.fish.command('/timeline')
+        self.assertEqual(len(events),1);self.assertEqual(events[0]['kind'],'research')
+        self.assertIn('+08:00',events[0]['at'])
+
     def test_life_requires_interests_and_valid_time(self):
         with self.assertRaises(ValueError):self.fish.command('/life on 10:00')
         self.fish.command('/interest 科学')
