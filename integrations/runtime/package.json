@@ -1,11 +1,13 @@
 {
   "dependencies": {
     "@tencent-weixin/openclaw-weixin": "2.4.10",
-    "openclaw": "2026.10.10"
+    "openclaw": "2026.10.10",
+    "npm": "file:vendor/npm-12.2.2-dafeiyu.1.tgz"
   },
   "overrides": {
-    "npm": "12.2.2",
+    "npm": "$npm",
     "zod": "4.6.7",
-    "minimatch": "11.0.4"
+    "minimatch": "11.0.4",
+    "glob": "14.0.3"
   }
 }

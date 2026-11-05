@@ -53,10 +53,11 @@ jobs:
           node-version: '26.13.0'
           cache: npm
           cache-dependency-path: integrations/runtime/package-lock.json
+      - run: python3 scripts/repack_npm.py --check
       - run: npm ci --ignore-scripts --prefix integrations/runtime --no-fund
       - run: node tests/runtime/compat.mjs integrations/runtime
       - run: integrations/runtime/node_modules/.bin/openclaw --version
-      - run: npm audit --prefix integrations/runtime --audit-level=high
+      - run: npm audit --prefix integrations/runtime --audit-level=low
   recovery:
     runs-on: ubuntu-latest
     steps:
