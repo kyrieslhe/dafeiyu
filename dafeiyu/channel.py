@@ -15,6 +15,8 @@ def tables(fish):
     CREATE TABLE IF NOT EXISTS inbound (id TEXT PRIMARY KEY,state TEXT,reply TEXT,created REAL);
     CREATE TABLE IF NOT EXISTS deliveries (outbox_id INTEGER PRIMARY KEY,state TEXT,error TEXT,updated REAL);
     ''')
+    with fish.db:
+        fish.db.execute("UPDATE inbound SET state='interrupted',reply='上次处理已中断，未自动重放。' WHERE state='running' AND created<?",(fish.clock()-120,))
 
 
 def inbound(fish, event):
@@ -37,6 +39,8 @@ def inbound(fish, event):
         inserted = fish.db.execute("INSERT OR IGNORE INTO inbound VALUES (?,'running',NULL,?)", (key,fish.clock())).rowcount
         if not inserted:
             # Never repeat a tool call or resend a full reply on duplicate provider delivery.
+            prior=fish.db.execute('SELECT state FROM inbound WHERE id=?',(key,)).fetchone()
+            if prior['state']=='interrupted':return '上次处理已中断，未自动重放；请重新发送一个新请求。'
             return '这条消息已处理或正在处理中；任务结果可用「大肥鱼 /tasks」查看。'
     text=event.get('text','')
     if not isinstance(text,str) or not text.strip() or len(text)>12000:

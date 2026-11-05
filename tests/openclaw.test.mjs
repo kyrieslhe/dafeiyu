@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import plugin, {bridge,stableSender} from '../integrations/openclaw/index.mjs';
+import plugin, {bridge,stableSender,stableMessageId} from '../integrations/openclaw/index.mjs';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
@@ -30,4 +30,10 @@ test('real JS-to-Python transport refuses an unbound sender without invoking the
  assert.equal(stableSender({isGroup:true},context),undefined);
  assert.equal(stableSender({},context),undefined);
  assert.equal(stableSender({isGroup:false},{conversationId:'昵称'}),undefined);
+ });
+
+ test('provider message identity rejects generated fallback IDs',()=>{
+ assert.equal(stableMessageId({}, {messageId:'openclaw-weixin-generated'}),undefined);
+ assert.equal(stableMessageId({}, {}),undefined);
+ assert.equal(stableMessageId({}, {messageId:'12345678901234567890'}),'12345678901234567890');
  });
