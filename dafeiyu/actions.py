@@ -17,8 +17,9 @@ INSTRUCTIONS='''你是大肥鱼。请按给定 JSON schema 返回自然回复或
 动作执行结果由应用给出，你不能伪造工具成功。只选择一个动作，不要为了显得主动给普通聊天创建任务。'''
 
 
-def route(fish,text,messages):
-    proposal=fish.model.plan([{'role':'system','content':INSTRUCTIONS}]+messages)
+def route(fish,text,messages,images=None):
+    context=[{'role':'system','content':INSTRUCTIONS}]+messages
+    proposal=fish.model.plan(context,images=images) if images else fish.model.plan(context)
     if not isinstance(proposal,dict) or set(proposal)!=set(SCHEMA['required']) or not all(isinstance(v,str) for v in proposal.values()):
         raise ModelError('模型未返回有效的动作结构；未执行操作。')
     name=proposal['action'];argument=proposal['argument'].strip()
