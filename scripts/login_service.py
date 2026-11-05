@@ -6,6 +6,8 @@ from pathlib import Path
 import plistlib
 import subprocess
 import sys
+import time
+import json
 
 ROOT=Path(__file__).resolve().parent.parent
 LABEL='io.github.kyrieslhe.dafeiyu'
@@ -36,8 +38,27 @@ def main():
         plist.unlink(missing_ok=True);print('已移除大肥鱼登录启动项，并停止本项目服务。');return
     (ROOT/'var/services.paused').unlink(missing_ok=True)
     plist.parent.mkdir(parents=True,exist_ok=True);plist.write_bytes(plistlib.dumps(definition()));os.chmod(plist,0o600)
+    log=ROOT/'var/service-supervisor.log'
+    offset=log.stat().st_size if log.exists() else 0
     result=subprocess.run(['launchctl','bootstrap',domain,str(plist)],capture_output=True,text=True)
     if result.returncode:raise SystemExit('LaunchAgent 加载失败；仍可用 services.py start 手动运行。')
-    print('已安装大肥鱼用户登录后台服务；退出登录或休眠期间不保证运行。')
+    ready=False
+    for _ in range(30):
+        if log.exists():
+            with log.open() as stream:
+                stream.seek(offset);recent=stream.read()
+            if 'Operation not permitted' in recent or 'Permission denied' in recent:break
+        status=subprocess.run([sys.executable,str(ROOT/'scripts/services.py'),'status'],capture_output=True,text=True,timeout=5)
+        try:
+            states=json.loads(status.stdout)
+            if len(states)==2 and all(value=='running' for value in states.values()):ready=True;break
+        except ValueError:pass
+        time.sleep(.5)
+    if not ready:
+        subprocess.run(['launchctl','bootout',domain+'/'+LABEL],capture_output=True)
+        plist.unlink(missing_ok=True)
+        subprocess.run([sys.executable,str(ROOT/'scripts/services.py'),'start'],check=False)
+        raise SystemExit('登录项未能启动项目（macOS 文件访问权限或进程启动失败）；已撤销登录项并恢复手动后台服务。请检查本机日志及系统文件访问授权后重试。')
+    print('已验证大肥鱼用户登录后台服务正在运行；退出登录或休眠期间不保证运行。')
 
 if __name__=='__main__':main()
