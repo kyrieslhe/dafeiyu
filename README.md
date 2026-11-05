@@ -67,6 +67,10 @@ python3 -m dafeiyu.channel bind ACCOUNT SENDER
 
 `/usage` 查看本应用最近 24 小时记录的真实调用次数和 provider 报告的 token 数。它不显示账号剩余额度，也不估算美元费用；部署前或其他 Codex 会话的用量不在统计中。
 
+## 持续在线
+
+Mac 当前登录会话可用 `python3 scripts/stay_online.py start --keep-awake` 启动后台监管：接电时保持系统唤醒，检查进程、网关和微信渠道，有界恢复异常。屏幕可以休眠；合盖、关机、断网仍可能离线。`python3 scripts/stay_online.py stop` 停止。长期建议独立常开设备，详见 [持续在线方案](docs/always-on.md)。这不代表已解决本机登录自启的系统文件访问授权。
+
 ## 运行与限制
 
 `python3 scripts/services.py status|stop|restart` 管理本项目网关和 worker。进程日志在私人 var 目录；可通过 `python3 scripts/login_service.py install` 安装用户登录后台服务；当前项目位于 Documents，本机实测被系统文件访问权限拦截，已保持可用的手动后台运行，详见 [部署复核](docs/hardening.md)。Mac 休眠或退出登录时不执行；没有安装登录项时需手动重新启动。

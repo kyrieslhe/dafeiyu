@@ -29,6 +29,10 @@ python3 -m dafeiyu --home var-restored doctor
 
 恢复后自主执行默认暂停、在途任务不重放、微信上下文清空，备份开关关闭。请先检查记忆、计划与待汇报记录，再决定启用服务或 `/resume`。独立项目源码、微信和模型登录需按各自官方流程重新准备。恢复文件不会自动替换运行中的 var。
 
+## 当前登录会话常驻
+
+无需注册系统启动项的会话监管：`python3 scripts/stay_online.py start --keep-awake`。接电时请求保持唤醒，异常有界恢复，详见 [持续在线方案](always-on.md)。安装登录项前先 `python3 scripts/stay_online.py stop`，避免两个监管器争用同一项目。
+
 ## macOS 登录常驻
 
 ```sh
