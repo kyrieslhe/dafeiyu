@@ -15,3 +15,5 @@ main 使用 GitHub 分支保护，配置快照在 `.github/branch-protection.jso
 公开仓库即可使用此分支保护，不依赖确认个人是否订阅 Pro。CLI 返回的账户信息没有可用的 plan 字段，因此没有把 Pro 资格写成已核实事实。
 
 本地 `python3 scripts/privacy_audit.py` 扫描完整可达 Git 历史，不打印命中的秘密正文。启发式检查不覆盖所有隐私类型，也不替代对新素材和集成的人工审查。
+
+语音运行时引入后，`speech` 哈希锁安装/导入检查也已实际加入 main 必需状态检查。

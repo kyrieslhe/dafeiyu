@@ -29,6 +29,10 @@
       {
         "context": "recovery",
         "app_id": 15368
+      },
+      {
+        "context": "speech",
+        "app_id": 15368
       }
     ]
   },
