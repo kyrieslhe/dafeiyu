@@ -99,3 +99,11 @@
 - 真实启动 `stay_online.py start --keep-awake`；监管收据、gateway/worker 进程、本机 HTTP 和微信渠道运行状态均确认正常。macOS 显示与监管 PID 关联的 caffeinate 请求；当时使用电池，系统有效 PreventSystemSleep 为 0，符合只接电生效的设计，不宣称已在接电条件完成长期测试。
 - 确认没有运行中任务后，仅向已核验 PID/启动时间的 worker 发送 SIGTERM，监管在约 26.1 秒后自动补启动，gateway PID 未变化。未发送微信测试消息、未制造主机断网或休眠；这不是端到端微信消息延迟或跨日稳定性测试。
 - 修正 doctor 的硬编码旧版本，让诊断与应用版本一致。当前会话监管已启用；真实开机/下次登录自动启动仍受前述系统文件权限条件限制。
+
+# 图片输入阶段
+
+- 依据锁定 SDK 的公开 reply_dispatch/ReplyDispatcher 接口接入完整附件上下文，替代只传文字的 before_dispatch。保留 owner gate、provider ID、禁止默认模型回落，并尊重发送禁止与会话取消。
+- 自动检查：90 项 Python 测试通过（6 项可选集成默认跳过），7 项 Node 桥接测试通过。包括身份校验先于打开附件、目录和符号链接拒绝、大小/格式限制、失败清理、CLI 图像参数及真实 JS→Python 传输。
+- 在独立临时数据库中，通过绑定门、暂存和真实 Codex --image 成功识别程序生成的蓝色 PNG；调用后临时副本已清理。测试没有发送微信消息，也没有写入私人聊天。
+- 用户通过微信发送图片的端到端结果尚未验证；SDK 媒体暂存目录或真实附件形态若与已检查接口不同，须据实修复，不能以本地模型冒烟代替平台验收。仅支持 PNG/JPEG 图像；没有在本阶段接入未转写音频和视频。
+- 官方参考：[Codex CLI 参数](https://learn.chatgpt.com/docs/cli/reference)。认证仍由官方 CLI 管理，无新付费 API 或凭据复制。

@@ -43,12 +43,21 @@ def inbound(fish, event):
             if prior['state']=='interrupted':return '上次处理已中断，未自动重放；请重新发送一个新请求。'
             return '这条消息已处理或正在处理中；任务结果可用「大肥鱼 /tasks」查看。'
     text=event.get('text','')
+    media=event.get('media',[])
+    if media and not text:text='请看看这张图片，和我聊聊。'
     if not isinstance(text,str) or not text.strip() or len(text)>12000:
         reply='只支持 1–12000 字符的文字消息。'
     else:
         if text.startswith('大肥鱼 '): text=text[len('大肥鱼 '):].strip()
         try:
-            result=fish.command(text)
+            if media:
+                from .media import staged_images
+                if text.startswith('/'):
+                    raise ValueError('带图片时请用普通文字描述问题，管理命令请单独发送。')
+                with staged_images(fish.home,media) as images:
+                    result=fish.chat(text,images=images)
+            else:
+                result=fish.command(text)
             reply=result if isinstance(result,str) else json.dumps(result,ensure_ascii=False,indent=2)
         except (ValueError,ModelError) as error: reply=str(error)
         except Exception: reply='处理失败；请在本机查看任务状态。'

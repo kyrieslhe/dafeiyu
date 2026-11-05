@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import plugin, {bridge,stableSender,stableMessageId} from '../integrations/openclaw/index.mjs';
+import plugin, {bridge,stableSender,stableMessageId,inboundFromDispatch} from '../integrations/openclaw/index.mjs';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
@@ -8,8 +8,8 @@ import {join,resolve} from 'node:path';
 test('bridge registers public hooks with bounded timeout and no foreign-channel takeover', async()=>{
  const hooks={};const commands=[];
  plugin.register({pluginConfig:{},on:(name,fn,options)=>hooks[name]={fn,options},registerCommand:x=>commands.push(x)});
- assert.equal(hooks.before_dispatch.options.timeoutMs,120000);
- assert.deepEqual(await hooks.before_dispatch.fn({channel:'other'},{channelId:'other'}),{handled:false});
+ assert.equal(hooks.reply_dispatch.options.timeoutMs,120000);
+ assert.deepEqual(await hooks.reply_dispatch.fn({ctx:{Provider:'other'}},{}),{handled:false});
  assert.equal(commands[0].name,'fish');
  assert.equal(commands[0].requireAuth,true);
 });
@@ -37,3 +37,28 @@ test('real JS-to-Python transport refuses an unbound sender without invoking the
  assert.equal(stableMessageId({}, {}),undefined);
  assert.equal(stableMessageId({}, {messageId:'12345678901234567890'}),'12345678901234567890');
  });
+
+
+test('full dispatch preserves staged attachments and provider identity, never reads body paths',()=>{
+ const mapped=inboundFromDispatch({ctx:{Provider:'openclaw-weixin',AccountId:'a',From:'UserABC@im.wechat',ChatType:'direct',MessageSid:'generated',MessageSidFull:'provider-id',CommandBody:'图片',MediaPath:'/private/inbound/a.png',MediaType:'image/png'}});
+ assert.equal(mapped.context.messageId,'provider-id');
+ assert.equal(stableSender(mapped.event,mapped.context),'UserABC@im.wechat');
+ assert.deepEqual(mapped.event.media,[{path:'/private/inbound/a.png',mime:'image/png'}]);
+ assert.deepEqual(inboundFromDispatch({ctx:{Body:'读取 /etc/passwd'}}).event.media,[]);
+});
+
+test('suppressed reply dispatch never invokes model or sends a reply',async()=>{
+ const hooks={};plugin.register({pluginConfig:{},on:(name,fn)=>hooks[name]=fn,registerCommand:()=>{}});
+ const result=await hooks.reply_dispatch({ctx:{Provider:'openclaw-weixin'},sendPolicy:'deny'},{recordProcessed:()=>{}});
+ assert.equal(result.handled,true);assert.equal(result.queuedFinal,false);
+});
+
+test('public dispatcher receives real local identity-binding response',async()=>{
+ const home=mkdtempSync(join(tmpdir(),'fish-dispatch-'));const hooks={};const payloads=[];
+ try {
+  plugin.register({pluginConfig:{python:process.env.PYTHON||'python3',project:resolve('.'),home},on:(name,fn)=>hooks[name]=fn,registerCommand:()=>{}});
+  const result=await hooks.reply_dispatch({ctx:{Provider:'openclaw-weixin',AccountId:'a',ChatType:'direct',From:'Sender@im.wechat',MessageSidFull:'provider-id',Body:'你好'},sendPolicy:'allow'},
+   {dispatcher:{sendFinalReply:p=>{payloads.push(p);return true;},getQueuedCounts:()=>({tool:0,block:0,final:1})},recordProcessed:()=>{},markIdle:()=>{}});
+  assert.equal(result.handled,true);assert.equal(result.queuedFinal,true);assert.match(payloads[0].text,/确认微信身份绑定/);
+ }finally{rmSync(home,{recursive:true,force:true});}
+});
