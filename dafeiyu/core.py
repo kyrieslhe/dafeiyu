@@ -24,6 +24,7 @@ class Model:
         self.name = os.environ.get('DAFEIYU_MODEL', '')
         self.key = os.environ.get('DAFEIYU_API_KEY', '')
         self.provider = os.environ.get('DAFEIYU_PROVIDER', 'codex')
+        self.cancelled = lambda: False
         self.codex = os.environ.get('DAFEIYU_CODEX_BIN') or shutil.which('codex')
 
     @property
@@ -61,7 +62,12 @@ class Model:
             raise ModelError('模型网络超时或响应格式错误；未保存虚构回复。') from None
 
 
-    def codex_reply(self, messages):
+    def search(self, messages):
+        if self.provider != 'codex':
+            raise ModelError('联网发现需要 Codex 提供方。')
+        return self.codex_reply(messages, search=True)
+
+    def codex_reply(self, messages, search=False):
         if not self.codex:
             raise ModelError('找不到 Codex CLI；请设置 DAFEIYU_CODEX_BIN 为可执行文件路径。')
         # Official CLI owns authentication; never read, copy or export its credentials.
@@ -71,15 +77,28 @@ class Model:
                        '--skip-git-repo-check', '--sandbox', 'read-only',
                        '-c', 'features.shell_tool=false', '-c', 'features.exec_tool=false',
                        '-C', directory, '-o', str(output), '-']
+            if search:
+                command.insert(1, '--search')
             if self.name:
-                command[2:2] = ['--model', self.name]
-            prompt = ('只进行文本对话，不使用任何工具，不读取任何文件、不运行命令。'
-                      '以下是聊天上下文 JSON，请按 system 中的人格回复最后一条 user 消息：\n'
+                command[1:1] = ['--model', self.name]
+            prompt = (('只使用网页搜索工具查找来源；禁止读取本机文件或运行命令。' if search else '只进行文本对话，不使用任何工具，不读取任何文件、不运行命令。')
+                      + '以下是聊天上下文 JSON，请按 system 中的人格回复最后一条 user 消息：\n'
                       + json.dumps(messages, ensure_ascii=False))
             process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                        stderr=subprocess.PIPE, text=True, start_new_session=True)
+            started = time.monotonic()
             try:
-                _, _ = process.communicate(prompt, timeout=90)
+                try:
+                    process.communicate(prompt, timeout=0.25)
+                except subprocess.TimeoutExpired:
+                    while True:
+                        if self.cancelled() or time.monotonic()-started > 90:
+                            raise subprocess.TimeoutExpired(command,90)
+                        try:
+                            process.communicate(timeout=0.25)
+                            break
+                        except subprocess.TimeoutExpired:
+                            continue
             except (subprocess.TimeoutExpired, KeyboardInterrupt):
                 os.killpg(process.pid, signal.SIGTERM)
                 try:
@@ -106,6 +125,8 @@ class Fish:
         self.db.row_factory = sqlite3.Row
         self.db.execute('PRAGMA journal_mode=WAL')
         self.db.executescript('''
+        CREATE TABLE IF NOT EXISTS approvals (task_id TEXT PRIMARY KEY,digest TEXT,payload TEXT,expires REAL,consumed INTEGER DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY,action TEXT,resource TEXT,created REAL);
         CREATE TABLE IF NOT EXISTS routines (id INTEGER PRIMARY KEY,at TEXT,goal TEXT,last_day TEXT);
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY,value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY,role TEXT,content TEXT,created REAL);
@@ -164,7 +185,7 @@ class Fish:
         return '已删除，并清空聊天上下文和共同日记，防止旧内容再次被带入。备份需单独清理。'
 
     def enqueue(self, kind, goal, due=None):
-        if kind not in ('reminder', 'draft', 'daily') or not goal.strip() or len(goal) > 6000:
+        if kind not in ('reminder', 'draft', 'daily', 'research', 'code') or not goal.strip() or len(goal) > 6000:
             raise ValueError('无效任务类型或内容（1–6000 字符）。')
         due = self.clock() if due is None else due
         if due < self.clock()-60:
@@ -200,29 +221,102 @@ class Fish:
             row = self.db.execute("SELECT * FROM tasks WHERE state='queued' AND due<=? ORDER BY due LIMIT 1", (now,)).fetchone()
             if row is None:
                 return None
-            changed = self.db.execute("UPDATE tasks SET state='running',lease=?,attempts=attempts+1 WHERE id=? AND state='queued'", (now+120, row['id'])).rowcount
+            changed = self.db.execute("UPDATE tasks SET state='running',lease=?,attempts=attempts+1 WHERE id=? AND state='queued'", (now+600, row['id'])).rowcount
             if not changed:
                 return None
+        waiting = False
+        if isinstance(self.model, Model):
+            self.model.cancelled = lambda: self.db.execute('SELECT state FROM tasks WHERE id=?', (row['id'],)).fetchone()[0] != 'running'
         try:
-            if row['kind'] == 'reminder':
+            if row['kind'] == 'research':
+                from .research import research
+                result, metadata = research(self.model, row['goal'])
+            elif row['kind'] == 'code':
+                from .coding import propose
+                request = json.loads(row['goal'])
+                payload, action_digest = propose(self.model, self.home / 'projects', request['project'], request['goal'], row['id'], self.home)
+                with self.db:
+                    self.db.execute('INSERT INTO approvals VALUES (?,?,?,?,0)', (row['id'], action_digest, json.dumps(payload, ensure_ascii=False), self.clock()+300))
+                result = '候选修改已通过无网络容器测试，等待审批（5 分钟有效）。\n' + payload['summary'] + '\n/diff ' + row['id'] + '\n/approve ' + row['id'] + ' ' + action_digest
+                waiting = True
+            elif row['kind'] == 'reminder':
                 late = '（已错过原定时间）' if now-row['due'] > 60 else ''
                 result = '🐳 提醒' + late + '：' + row['goal']
             else:
                 prompt = ('写一小段今日相处札记，区分已知经历与愿望，不编造今日活动。' if row['kind'] == 'daily' else '生成未联网核实的草稿，清楚标注猜测和待核查点：') + row['goal']
                 result = '【模型生成，未联网核实】\n' + self.model.reply(self.context(prompt))
+            if not waiting and self.db.execute('SELECT state FROM tasks WHERE id=?', (row['id'],)).fetchone()[0] == 'running':
+                reports = self.home / 'reports'
+                reports.mkdir(exist_ok=True)
+                (reports / (row['id']+'.md')).write_text(result)
+                if row['kind'] == 'research':
+                    (reports / (row['id']+'.sources.json')).write_text(json.dumps(metadata,ensure_ascii=False,indent=2))
             with self.db:
-                changed = self.db.execute("UPDATE tasks SET state='succeeded',result=?,lease=NULL WHERE id=? AND state='running'", (result, row['id'])).rowcount
+                changed = self.db.execute("UPDATE tasks SET state=?,result=?,lease=NULL WHERE id=? AND state='running'", ('waiting_approval' if waiting else 'succeeded', result, row['id'])).rowcount
                 if changed:
                     self.db.execute('INSERT OR IGNORE INTO outbox(task_id,content) VALUES (?,?)', (row['id'], result))
         except Exception as error:
-            safe = str(error) if isinstance(error, ModelError) else '任务处理失败，未产生结果。'
+            safe = str(error) if isinstance(error, (ModelError, ValueError)) or error.__class__.__name__ in ('ResearchError', 'CodingError') else '任务处理失败（%s），未产生结果。' % type(error).__name__
             with self.db:
                 self.db.execute("UPDATE tasks SET state='failed',error=?,lease=NULL WHERE id=? AND state='running'", (safe, row['id']))
+        finally:
+            if isinstance(self.model, Model): self.model.cancelled = lambda: False
         return row['id']
 
     def command(self, text):
-        command, _, argument = text.strip().partition(' ')
+        text = text.strip()
+        aliases = {'状态':'/status','查看记忆':'/memories','待汇报':'/inbox','暂停自主任务':'/pause','继续':'/resume'}
+        text = aliases.get(text,text)
+        for prefix, replacement in [('记住 ','/remember '),('记住：','/remember '),('忘记 ','/forget '),('研究一下 ','/research '),('帮我研究 ','/research '),('帮我修改项目 ','/code ')]:
+            if text.startswith(prefix):
+                text = replacement + text[len(prefix):]; break
+        command, _, argument = text.partition(' ')
         argument = argument.strip()
+        if command == '/research':
+            return '研究任务已入队：' + self.enqueue('research', argument)
+        if command == '/code':
+            project, _, goal = argument.partition(' ')
+            if not project or not goal: raise ValueError('格式：/code 项目名 功能目标')
+            return '编程任务已入队：' + self.enqueue('code', json.dumps({'project':project,'goal':goal}, ensure_ascii=False))
+        if command == '/result':
+            rows = self.rows('SELECT state,result,error FROM tasks WHERE id=?', (argument,))
+            return rows or '没有这个任务。'
+        if command == '/diff':
+            import difflib
+            from .coding import snapshot
+            row = self.db.execute('SELECT payload,digest,expires FROM approvals WHERE task_id=?', (argument,)).fetchone()
+            if not row: return '没有候选修改。'
+            payload = json.loads(row['payload'])
+            original = snapshot(self.home / 'projects' / payload['project'])
+            diff = ''.join(''.join(difflib.unified_diff(original.get(name,'').splitlines(True), content.splitlines(True), fromfile='a/'+name,tofile='b/'+name)) for name,content in payload['files'].items())
+            return diff + '\n测试结果：\n' + payload['test_output'] + '\n动作摘要：' + row['digest']
+        if command == '/approve':
+            from .coding import apply, digest, CodingError
+            identifier, _, supplied = argument.partition(' ')
+            self.db.execute('BEGIN IMMEDIATE')
+            try:
+                row = self.db.execute('SELECT * FROM approvals WHERE task_id=?', (identifier,)).fetchone()
+                task = self.db.execute('SELECT state FROM tasks WHERE id=?', (identifier,)).fetchone()
+                if not row or row['consumed'] or row['expires'] < self.clock() or row['digest'] != supplied or not task or task['state'] != 'waiting_approval':
+                    raise ValueError('审批不存在、已消费、已过期、任务已取消或动作摘要不匹配。')
+                payload = json.loads(row['payload'])
+                if digest(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()) != supplied:
+                    raise ValueError('审批正文已改变。')
+                # Consume before touching the filesystem: a crash cannot silently reapply.
+                self.db.execute('UPDATE approvals SET consumed=1 WHERE task_id=?', (identifier,))
+                self.db.execute("UPDATE tasks SET state='applying' WHERE id=?", (identifier,))
+                self.db.commit()
+            except Exception:
+                self.db.rollback(); raise
+            try:
+                result = apply(self.home / 'projects', payload)
+            except (CodingError, OSError):
+                with self.db: self.db.execute("UPDATE tasks SET state='failed',error='应用失败，请检查候选与项目状态后重新生成' WHERE id=?", (identifier,))
+                raise
+            with self.db:
+                self.db.execute("UPDATE tasks SET state='succeeded',result=? WHERE id=?", (result,identifier))
+                self.db.execute('INSERT INTO audit(action,resource,created) VALUES (?,?,?)', ('apply', identifier, self.clock()))
+            return result
         if command == '/remember':
             return self.remember(argument)
         if command == '/memories':
@@ -262,7 +356,7 @@ class Fish:
             return self.rows('SELECT id,kind,goal,state,error FROM tasks ORDER BY created DESC LIMIT 30')
         if command == '/cancel':
             with self.db:
-                n = self.db.execute("UPDATE tasks SET state='cancelled' WHERE id=? AND state IN ('queued','running')", (argument,)).rowcount
+                n = self.db.execute("UPDATE tasks SET state='cancelled' WHERE id=? AND state IN ('queued','running','waiting_approval')", (argument,)).rowcount
             return '已取消；在途文本请求可能继续至超时，但结果不会发布。' if n else '没有可取消的任务。'
         if command in ('/pause', '/resume'):
             with self.db:
@@ -279,7 +373,7 @@ class Fish:
                 self.db.execute('DELETE FROM messages')
             return '聊天上下文已清空；明确记忆仍保留。'
         if command == '/status':
-            return {'version': '0.1.0', 'model_configured': self.model.ready, 'wechat': '未接入',
+            return {'version': '0.2.0', 'model_configured': self.model.ready, 'wechat': '插件桥接已实现；扫码与实测状态见 channels 命令',
                     'paused': self.db.execute("SELECT value FROM settings WHERE key='paused'").fetchone()[0] == '1',
                     'tasks': self.rows('SELECT state,count(*) AS count FROM tasks GROUP BY state')}
         if command == '/help':
@@ -296,7 +390,7 @@ HELP = '''🐳 大肥鱼 · 本地私人伙伴
 /forget 编号          删除记忆，并清空历史与日记
 /diary [内容]         查看或添加共同日记
 /remind 2026-12-01T09:00 内容   香港时间的一次提醒
-/draft 主题           后台生成草稿，需要模型；不联网
+/research 问题或HTTPS链接   联网研究并记录来源\n/code 项目名 目标     生成候选、隔离测试；不直接应用\n/diff 任务编号        查看候选差异与测试\n/approve 任务编号 摘要  确认精确候选修改\n/result 任务编号      查看任务成果\n/draft 主题           后台生成草稿，需要模型；不联网
 /daily                排队生成一次相处札记，需要模型
 /routine 21:00 主题    授权每天生成一次札记（消耗模型额度）\n/routines /unroutine 编号   查看／移除计划\n/tasks                查看任务与错误
 /cancel 任务编号       取消任务

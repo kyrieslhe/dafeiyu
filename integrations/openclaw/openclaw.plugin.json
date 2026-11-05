@@ -1,0 +1,1 @@
+{"id":"dafeiyu-bridge","name":"大肥鱼","description":"Authenticated single-user local companion bridge","configSchema":{"type":"object","additionalProperties":false,"properties":{"python":{"type":"string"},"project":{"type":"string"},"home":{"type":"string"}},"required":["python","project","home"]}}
