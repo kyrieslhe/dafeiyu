@@ -158,3 +158,13 @@ def browse(model,goal,home,identifier):
     answer+='\n\n实际查看页面：\n'+'\n'.join('- ['+page['title'].replace(']','')+']('+page['url']+') · '+page['retrieved_at'] for page in pages)
     if any(p['partial'] or p['blocked_resources'] for p in pages):answer+='\n部分页面资源被限制或未能加载；结果不代表完整网站功能。'
     return answer,{'complete':complete,'pages':pages}
+
+
+def cleanup(fish):
+    import shutil
+    root=fish.home/'browser-runs'
+    if not root.is_dir() or root.is_symlink():return
+    for path in root.iterdir():
+        if not re.fullmatch('[0-9a-f]{12}',path.name) or path.is_symlink() or not path.is_dir():continue
+        active=fish.db.execute("SELECT 1 FROM tasks WHERE id=? AND state IN ('queued','running','applying')",(path.name,)).fetchone()
+        if not active and path.stat().st_mtime<fish.clock()-7*86400:shutil.rmtree(path)

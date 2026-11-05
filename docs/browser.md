@@ -25,7 +25,7 @@ python3 scripts/setup_browser.py
 
 ## 证据与检查
 
-截图、页面和资源记录在私人 var/browser-runs/任务编号。普通后台报告仍在 var/reports。微信发送仍受有效上下文窗口限制；accepted 不代表已读。
+截图、页面和资源记录在私人 var/browser-runs/任务编号，任务结束七天后可清理；长期文字报告仍保留。普通后台报告仍在 var/reports。微信发送仍受有效上下文窗口限制；accepted 不代表已读。
 
 实际本机已完成：Chromium 自身沙箱+非 root+无网络容器启动，渲染 Python 官网，拿到标题/正文/链接/截图；截图目视检查通过。另通过真实 Codex 读取该次实际渲染截图，任务成功并返回有实际页面来源的观察。部分资源受限，未声称验证整站。
 

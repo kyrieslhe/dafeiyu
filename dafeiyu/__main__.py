@@ -38,6 +38,8 @@ def main():
                     maybe_backup(fish)
                     from .speech import cleanup
                     cleanup(fish)
+                    from .browser import cleanup as cleanup_browser
+                    cleanup_browser(fish)
                     backup_check=time.monotonic()+60
                 if args.once:
                     break

@@ -57,9 +57,9 @@ class BrowserTests(unittest.TestCase):
         with self.assertRaises(ResearchError):fetch('https://127.0.0.1')
     @unittest.skipUnless(os.environ.get('DAFEIYU_TEST_BROWSER')=='1','optional pinned Docker browser runtime')
     def test_real_sandbox_render_with_offline_fixture_resources(self):
-        data=b'<html><title>Fish fixture</title><body><h1>Actual browser</h1><a href="https://example.com/next">Next</a><script>document.body.dataset.ran="yes"</script></body></html>'
+        data=b'<html><title>Fish fixture</title><body><h1>Actual browser</h1><a href="https://example.com/next">Next</a><script>document.body.append(" JS executed")</script></body></html>'
         def fixture(url):return {'ok':True,'status':200,'headers':{'content-type':'text/html'},'body':base64.b64encode(data).decode(),'size':len(data),'sha256':hashlib.sha256(data).hexdigest()}
         with tempfile.TemporaryDirectory() as directory:
             result=render('https://example.com',Path(directory)/'page',fetcher=fixture)
-            self.assertEqual(result['title'],'Fish fixture');self.assertIn('Actual browser',result['text'])
+            self.assertEqual(result['title'],'Fish fixture');self.assertIn('Actual browser',result['text']);self.assertIn('JS executed',result['text'])
             self.assertTrue(Path(result['screenshot']).is_file());self.assertTrue(result['resources'])
