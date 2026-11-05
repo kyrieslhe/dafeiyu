@@ -3,13 +3,14 @@ import json
 import re
 from .core import ModelError
 
-SCHEMA={'type':'object','properties':{'reply':{'type':'string'},'action':{'type':'string','enum':['reply','research','code','recall','tasks','remember','reminder','daily','diary','speak']},'argument':{'type':'string'}},'required':['reply','action','argument'],'additionalProperties':False}
+SCHEMA={'type':'object','properties':{'reply':{'type':'string'},'action':{'type':'string','enum':['reply','research','code','recall','tasks','remember','reminder','daily','diary','speak','browse']},'argument':{'type':'string'}},'required':['reply','action','argument'],'additionalProperties':False}
 INSTRUCTIONS='''你是大肥鱼。请按给定 JSON schema 返回自然回复或一个受限动作。
 普通聊天 action=reply，reply 遵守下方性格设定，用大肥鱼的口吻直接聊天，argument 留空。不要因为需要输出 JSON 就写成客服语气或任务汇报；用户分享生活不等于请求创建任务。
 用户明确请求查询新信息或研究时，action=research，argument 是研究问题；应用会返回任务编号，不能说已经查完。
 用户请求修改项目时，action=code，argument 格式为「项目名 功能目标」；只生成候选与测试，不能自行审批。
 用户想回忆明确记忆时用 recall，argument 为检索词；查看任务用 tasks。
 用户明确要求记住原话才可 remember，argument 必须是当前用户消息中连续出现的原文；不能凭推断写事实。
+用户明确要求实际查看网页、布局或沿链接查资料时可用 browse，argument 是公开 HTTPS 地址与目标（没有地址则写明确目标，由搜索找一手入口）。这是只读浏览，不能登录、填表、点赞或发帖。
 用户明确要求语音回复或朗读时用 speak，argument 写准备朗读的简短中文（最多 600 字）；这只创建本机音频任务，不能说已送达。
 明确安排一次提醒用 reminder，argument 格式为「ISO8601时间 内容」，必须依据当前时间换算并保留时区；不确定日期就用 reply 澄清。
 用户请求生成一次今日札记用 daily；用户要求记录日记用 diary，其 argument 必须是当前消息中的原文。
@@ -26,7 +27,7 @@ def route(fish,text,messages,images=None,allow_actions=True):
     name=proposal['action'];argument=proposal['argument'].strip()
     if name not in SCHEMA['properties']['action']['enum'] or len(argument)>6000 or len(proposal['reply'])>12000:
         raise ModelError('模型动作超出允许范围；未执行操作。')
-    if not allow_actions and name not in ('reply','recall','tasks','research'):
+    if not allow_actions and name not in ('reply','recall','tasks','research','browse'):
         return '我听到了，但语音转写可能有误。涉及记忆、提醒或修改项目，请用文字确认具体内容。'
     if name=='reply':
         if not proposal['reply'].strip():raise ModelError('模型返回空回复。')
@@ -37,6 +38,10 @@ def route(fish,text,messages,images=None,allow_actions=True):
         if negative or not requested or not argument or argument not in text:
             return '这件事还没有写入长期记录。请明确用 /remember 内容 或 /diary 内容 保存你确认的原话。'
     if name=='tasks':return json.dumps(fish.command('/tasks'),ensure_ascii=False,indent=2)
+    if name=='browse':
+        if not any(word in text for word in ('网页','浏览','网站','页面','https://')):
+            return '还没有创建浏览任务；请说明要查看的网站或页面。'
+        return fish.command('/browse '+argument)
     if name=='speak':
         if not any(word in text for word in ('语音','朗读','读出来','念给我')):
             return '还没有创建语音任务；请明确说明要我朗读什么。'
