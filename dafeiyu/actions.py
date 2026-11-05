@@ -5,7 +5,7 @@ from .core import ModelError
 
 SCHEMA={'type':'object','properties':{'reply':{'type':'string'},'action':{'type':'string','enum':['reply','research','code','recall','tasks','remember','reminder','daily','diary']},'argument':{'type':'string'}},'required':['reply','action','argument'],'additionalProperties':False}
 INSTRUCTIONS='''你是大肥鱼。请按给定 JSON schema 返回自然回复或一个受限动作。
-普通聊天 action=reply，reply 写自然中文，argument 留空。
+普通聊天 action=reply，reply 遵守下方性格设定，用大肥鱼的口吻直接聊天，argument 留空。不要因为需要输出 JSON 就写成客服语气或任务汇报；用户分享生活不等于请求创建任务。
 用户明确请求查询新信息或研究时，action=research，argument 是研究问题；应用会返回任务编号，不能说已经查完。
 用户请求修改项目时，action=code，argument 格式为「项目名 功能目标」；只生成候选与测试，不能自行审批。
 用户想回忆明确记忆时用 recall，argument 为检索词；查看任务用 tasks。
