@@ -37,6 +37,12 @@ def main():
     if not link.exists():link.symlink_to(installed.name,target_is_directory=True)
     destination=ROOT/'var/openclaw';destination.mkdir(parents=True,exist_ok=True)
     for name in ['package.json','package-lock.json']:shutil.copyfile(ROOT/'integrations/runtime'/name,destination/name)
+    vendor=destination/'vendor';vendor.mkdir(exist_ok=True)
+    metadata=json.loads((ROOT/'integrations/runtime/vendor/provenance.json').read_text())
+    archive=ROOT/'integrations/runtime/vendor/npm-12.2.2-dafeiyu.1.tgz'
+    if hashlib.sha256(archive.read_bytes()).hexdigest()!=metadata['sha256']:raise SystemExit('本地 npm 安全修补包校验失败')
+    shutil.copyfile(archive,vendor/archive.name)
+    shutil.copyfile(ROOT/'integrations/runtime/vendor/provenance.json',vendor/'provenance.json')
     env=dict(os.environ);env['PATH']=str(link/'bin')+os.pathsep+env.get('PATH','')
     subprocess.run([str(link/'bin/npm'),'ci','--ignore-scripts','--prefix',str(destination)],env=env,check=True)
     state=ROOT/'var/gateway';state.mkdir(mode=0o700,exist_ok=True)

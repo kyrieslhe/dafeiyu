@@ -1,0 +1,18 @@
+{
+  "upstream": {
+    "package": "npm",
+    "version": "12.2.2",
+    "url": "https://registry.npmjs.org/npm/-/npm-12.2.2.tgz",
+    "integrity": "sha512-KglgbZyacf7jH+FHuNRqVuCzQi8VhI2a7J87Ix43FsPTuZoGWmIXXGdZtBUOA79vwL+IJREqURVzupA7PsQTcA=="
+  },
+  "local_version": "12.2.2+dafeiyu.1",
+  "sha256": "d6f118e80d51b0685ee7dc7620e823eefc66de3fbe6e78f8875c1afa6d9d7360",
+  "removed_bundled_files": 1526,
+  "changes": [
+    "unbundle dependency graph",
+    "glob=14.0.3",
+    "minimatch=11.0.4",
+    "local build metadata and notice"
+  ],
+  "license": "Artistic-2.0"
+}
