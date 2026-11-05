@@ -453,8 +453,8 @@ class Fish:
             tables(self)
             return self.rows('SELECT * FROM deliveries ORDER BY updated DESC LIMIT 30')
         if command == '/result':
-            rows = self.rows('SELECT state,result,error FROM tasks WHERE id=?', (argument,))
-            return rows or '没有这个任务。'
+            from .results import read
+            return read(self,argument)
         if command == '/diff':
             import difflib
             from .coding import snapshot
@@ -566,7 +566,7 @@ HELP = '''🐳 大肥鱼 · 本地私人伙伴
 /forget 编号          删除记忆，并清空历史与日记
 /diary [内容]         查看或添加共同日记
 /remind 2026-12-01T09:00 内容   香港时间的一次提醒
-/research 问题或HTTPS链接   联网研究并记录来源\n/code 项目名 目标     生成候选、隔离测试；不直接应用\n/diff 任务编号        查看候选差异与测试\n/approve 任务编号 摘要  确认精确候选修改\n/result 任务编号      查看任务成果\n/draft 主题           后台生成草稿，需要模型；不联网
+/research 问题或HTTPS链接   联网研究并记录来源\n/code 项目名 目标     生成候选、隔离测试；不直接应用\n/diff 任务编号        查看候选差异与测试\n/approve 任务编号 摘要  确认精确候选修改\n/result 任务编号 [页码]  分页查看任务成果\n/draft 主题           后台生成草稿，需要模型；不联网
 /daily                排队生成一次相处札记，需要模型
 /routine 21:00 主题    授权每天生成一次札记（消耗模型额度）\n/routines /unroutine 编号   查看／移除计划\n/tasks                查看任务与错误
 /cancel 任务编号       取消任务
