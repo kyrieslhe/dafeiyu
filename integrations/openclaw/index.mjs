@@ -7,6 +7,12 @@ export function stableSender(event, context) {
   return context.senderId || event.senderId || directPeer;
 }
 
+export function stableMessageId(event, context) {
+  const id=context.messageId || event.messageId;
+  // Generated fallback MessageSid values change across duplicate deliveries.
+  return typeof id==='string' && id && !id.startsWith('openclaw-weixin') ? id : undefined;
+}
+
 export function bridge(config, event, context) {
   return new Promise((resolve) => {
     const child = spawn(config.python, ['-m', 'dafeiyu.channel', '--home', config.home, 'inbound'], {
@@ -35,7 +41,7 @@ export function bridge(config, event, context) {
       channel:context.channelId || event.channel,
       account:context.accountId,
       sender:stableSender(event,context),
-      message_id:context.messageId || event.messageId,
+      message_id:stableMessageId(event,context),
       group:event.isGroup !== false,
       text:event.content || event.body || ''
     }));

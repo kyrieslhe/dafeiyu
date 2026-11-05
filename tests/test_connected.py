@@ -40,6 +40,14 @@ class ConnectedTests(unittest.TestCase):
         self.assertEqual(self.fish.command('/memories'),[])
         inbound(self.fish,self.event());inbound(self.fish,self.event(text='/remember 不应该保存'))
         self.assertEqual(len(self.fish.command('/memories')),1)
+    def test_interrupted_inbound_is_explicit_and_never_replayed(self):
+        self.bind();event=self.event();key=json.dumps([event['account'],event['sender'],event['message_id']])
+        with self.fish.db:self.fish.db.execute("INSERT INTO inbound VALUES (?,'running',NULL,?)",(key,self.now-200))
+        reply=inbound(self.fish,event)
+        self.assertIn('已中断',reply)
+        self.assertEqual(self.fish.command('/memories'),[])
+        self.assertEqual(self.fish.model.calls,0)
+
     def test_missing_provider_id_rejected(self):
         self.bind();inbound(self.fish,self.event(message_id=None))
         self.assertEqual(self.fish.command('/memories'),[])
