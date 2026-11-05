@@ -57,7 +57,15 @@ def inbound(fish, event):
     else:
         if text.startswith('大肥鱼 '): text=text[len('大肥鱼 '):].strip()
         try:
-            if media and any(isinstance(item,dict) and str(item.get('mime','')).startswith('audio/') for item in media):
+            if media and any(isinstance(item,dict) and str(item.get('mime','')).startswith('video/') for item in media):
+                from .media import store_video
+                path=store_video(fish.home,media)
+                question=text if text not in ('[视频]','<media:video>','请看看这张图片，和我聊聊。') else '概括这段短视频的可见内容。'
+                try:identifier=fish.enqueue('video',json.dumps({'path':str(path),'question':question},ensure_ascii=False))
+                except Exception:
+                    path.unlink(missing_ok=True);raise
+                result='短视频分析任务已入队：'+identifier+'。我会抽取带时间点的画面，并在可用时转写前一分钟音轨；用「大肥鱼 /result '+identifier+'」查看结果。'
+            elif media and any(isinstance(item,dict) and str(item.get('mime','')).startswith('audio/') for item in media):
                 from .media import staged_audio
                 from .speech import transcribe
                 with staged_audio(fish.home,media) as audio:
