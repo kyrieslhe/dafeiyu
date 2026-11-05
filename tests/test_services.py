@@ -50,4 +50,81 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(value['ProgramArguments'][1],'/example/project/scripts/supervise.py')
 
 
+class SupervisorTests(unittest.TestCase):
+    def test_three_failed_checks_before_repair_then_healthy_resets(self):
+        policy=load('supervise').RecoveryPolicy()
+        self.assertIsNone(policy.observe(True,False,True,0,0))
+        self.assertIsNone(policy.observe(True,False,True,30,30))
+        self.assertEqual(policy.observe(True,False,True,60,60),('restart','unhealthy'))
+        self.assertIsNone(policy.observe(True,True,True,90,90))
+        self.assertIsNone(policy.observe(True,False,True,120,120))
+        self.assertIsNone(policy.observe(True,False,True,150,150))
+        self.assertEqual(policy.observe(True,False,True,180,180),('restart','unhealthy'))
+
+    def test_missing_process_and_bounded_repairs(self):
+        policy=load('supervise').RecoveryPolicy()
+        self.assertEqual(policy.observe(False,False,False,0,0),('start','missing-process'))
+        self.assertIsNone(policy.observe(False,False,False,30,30))
+        for now in (60,120):self.assertEqual(policy.observe(False,False,False,now,now)[0],'start')
+        self.assertEqual(policy.observe(False,False,False,180,180),('pause','repair-budget'))
+        self.assertEqual(policy.observe(False,False,False,721,721)[0],'start')
+
+    def test_resume_gap_repairs_even_when_processes_still_alive(self):
+        policy=load('supervise').RecoveryPolicy()
+        self.assertIsNone(policy.observe(True,True,True,0,1000))
+        self.assertEqual(policy.observe(True,True,True,30,1600),('restart','host-resume'))
+        self.assertIsNone(policy.observe(True,True,True,60,1630))
+
+    def test_ac_only_assertion_without_display_or_global_settings(self):
+        self.assertEqual(load('supervise').awake_command(123),['/usr/bin/caffeinate','-s','-w','123'])
+
+    def test_silent_channel_is_healthy_and_does_not_require_inbound(self):
+        import json,subprocess
+        module=load('supervise')
+        body={'channelAccounts':{'openclaw-weixin':[{'enabled':True,'configured':True,'running':True,'lastInboundAt':0}]}}
+        class Response:
+            status=200
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+        with patch.object(module.urllib.request,'urlopen',return_value=Response()),patch('subprocess.run',return_value=subprocess.CompletedProcess([],0,json.dumps(body),'')):
+            self.assertEqual(module.probe(),(True,True))
+        body['channelAccounts']['openclaw-weixin'][0]['running']=False
+        with patch.object(module.urllib.request,'urlopen',return_value=Response()),patch('subprocess.run',return_value=subprocess.CompletedProcess([],0,json.dumps(body),'')):
+            self.assertEqual(module.probe(),(True,False))
+
+    def test_second_session_does_not_spawn_or_change_options(self):
+        module=load('stay_online')
+        with patch.object(module,'current',return_value={'keep_awake':True}),patch('subprocess.Popen') as spawn,patch('sys.stdout',new_callable=io.StringIO):
+            module.control('start',True)
+            with self.assertRaisesRegex(SystemExit,'选项不同'):module.control('start',False)
+            spawn.assert_not_called()
+
+    def test_stopping_session_stops_services_before_terminating_watchdog(self):
+        import subprocess
+        module=load('stay_online');events=[]
+        with patch.object(module,'current',side_effect=[{'pid':123},None]),patch('subprocess.run',side_effect=lambda *a,**k:events.append('services-stop') or subprocess.CompletedProcess([],0)),patch.object(module.os,'kill',side_effect=lambda *a:events.append('signal')),patch('sys.stdout',new_callable=io.StringIO):
+            module.control('stop')
+        self.assertEqual(events,['services-stop','signal'])
+
+    def test_terminated_caffeinate_is_waited_for(self):
+        from unittest.mock import Mock
+        module=load('supervise');process=Mock();process.poll.return_value=None
+        module.release_awake(process)
+        process.terminate.assert_called_once();process.wait.assert_called_once_with(timeout=3)
+
+    def test_login_install_refuses_active_session_before_stopping_services(self):
+        import json,subprocess
+        module=load('login_service')
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);(root/'var').mkdir()
+            (root/'var/supervisor.json').write_text(json.dumps({'pid':123,'stamp':'stamp'}))
+            commands=[]
+            def run(command,**kwargs):
+                commands.append(command)
+                return subprocess.CompletedProcess(command,1 if command[0]=='launchctl' else 0,'stamp','')
+            with patch.object(module,'ROOT',root),patch.object(module.sys,'platform','darwin'),patch('pathlib.Path.home',return_value=root/'user'),patch('subprocess.run',side_effect=run),patch('sys.argv',['login_service.py','install']):
+                with self.assertRaisesRegex(SystemExit,'停止当前会话监管'):module.main()
+            self.assertFalse(any('services.py' in str(command) for command in commands))
+
+
 if __name__=='__main__':unittest.main()

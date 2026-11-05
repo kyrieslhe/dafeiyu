@@ -32,6 +32,19 @@ def main():
     if args.action=='status':
         result=subprocess.run(['launchctl','print',domain+'/'+LABEL],capture_output=True,text=True)
         print('installed and loaded' if result.returncode==0 else 'not loaded');return
+    # A detached session watchdog must be stopped before replacing its ownership.
+    receipt=ROOT/'var/supervisor.json'
+    session_active=False
+    if receipt.exists():
+        try:
+            entry=json.loads(receipt.read_text())
+            stamped=subprocess.run(['ps','-p',str(entry['pid']),'-o','lstart='],capture_output=True,text=True,timeout=5)
+            session_active=bool(entry.get('stamp')) and entry['stamp']==stamped.stdout.strip()
+        except (OSError,ValueError,KeyError,subprocess.TimeoutExpired):pass
+    if args.action=='install' and session_active:
+        loaded=subprocess.run(['launchctl','print',domain+'/'+LABEL],capture_output=True)
+        if loaded.returncode:
+            raise SystemExit('请先运行 scripts/stay_online.py stop 停止当前会话监管，再安装登录启动项。')
     subprocess.run(['launchctl','bootout',domain+'/'+LABEL],capture_output=True)
     subprocess.run([sys.executable,str(ROOT/'scripts/services.py'),'stop','--internal'],check=False)
     if args.action=='uninstall':
