@@ -28,6 +28,8 @@ def record(fish,source,kind,content):
 
 
 def due(fish,now):
+    from . import curiosity
+    if curiosity.mode(fish)=='random':return curiosity.due(fish,now)
     local=datetime.fromtimestamp(now,ZoneInfo('Asia/Hong_Kong'))
     day,at=local.strftime('%Y-%m-%d'),local.strftime('%H:%M')
     with fish.db:
@@ -90,16 +92,22 @@ def command(fish,name,argument):
         with fish.db:fish.db.execute('DELETE FROM interests WHERE id=?',(int(argument),))
         return '已移除兴趣。'
     if name=='/life':
+        from . import curiosity
+        if argument=='random':return curiosity.enable(fish)
         if argument=='off':
-            with fish.db:fish.db.execute('UPDATE life_plan SET enabled=0 WHERE singleton=1')
-            return '自主探索已关闭；已入队任务可单独取消。'
+            with fish.db:
+                fish.db.execute('UPDATE life_plan SET enabled=0 WHERE singleton=1')
+                fish.db.execute("UPDATE tasks SET state='cancelled' WHERE (id LIKE 'curious-%' OR id LIKE 'life-%') AND state IN ('queued','running')")
+            return '自主探索已关闭，自动探索队列已停止；手动任务保留。'
         if argument.startswith('on '):
             at=argument[3:].strip();datetime.strptime(at,'%H:%M')
             if len(at)!=5:raise ValueError('格式：/life on 10:00（香港时间）')
             if not fish.db.execute('SELECT count(*) FROM interests').fetchone()[0]:raise ValueError('先用 /interest 主题 添加兴趣。')
-            with fish.db:fish.db.execute('UPDATE life_plan SET enabled=1,at=? WHERE singleton=1',(at,))
+            with fish.db:
+                fish.db.execute("INSERT OR REPLACE INTO settings VALUES ('life_mode','fixed')")
+                fish.db.execute('UPDATE life_plan SET enabled=1,at=? WHERE singleton=1',(at,))
             return '已授权每天香港时间 '+at+' 最多一次兴趣研究，消耗 Codex 额度。离线后只补当天一次，遵守暂停与安静时间。'
-        return {'plan':fish.rows('SELECT * FROM life_plan'),'interests':fish.rows('SELECT * FROM interests'),'timezone':'Asia/Hong_Kong','default':'off','daily_limit':1}
+        return {'plan':fish.rows('SELECT * FROM life_plan'),'interests':fish.rows('SELECT * FROM interests'),'timezone':'Asia/Hong_Kong','default':'off','daily_limit':4 if curiosity.mode(fish)=='random' else 1,'random':curiosity.status(fish)}
     if name=='/explore':
         topic=argument or (fish.rows('SELECT topic FROM interests ORDER BY id LIMIT 1') or [{'topic':''}])[0]['topic']
         if not topic:raise ValueError('请提供探索主题或先添加兴趣。')
