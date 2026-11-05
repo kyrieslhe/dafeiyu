@@ -1,4 +1,5 @@
 """Short-clip understanding from bounded container samples and optional local audio."""
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,12 @@ def decode(path,output,cancelled=lambda:False,runtime=None):
     if not receipt.exists():raise VideoError('短视频解码尚未安装，请在本机运行 scripts/setup_video.py。')
     image=receipt.read_text().strip()
     if not re.fullmatch('sha256:[0-9a-f]{64}',image):raise VideoError('视频镜像标识异常，未执行。')
+    build=runtime/'build.json'
+    try:
+        value=json.loads(build.read_text())
+        digest=hashlib.sha256((ROOT/'integrations/video/decode.py').read_bytes()).hexdigest()
+        if value['decoder_sha256']!=digest:raise ValueError()
+    except (OSError,ValueError,KeyError):raise VideoError('视频解码版本已变化，请重新运行 scripts/setup_video.py。') from None
     source=Path(path)
     if source.is_symlink() or not source.is_file() or not 0<source.stat().st_size<=20*1024*1024:raise VideoError('视频已失效或超出 20MB。')
     output=Path(output).resolve()

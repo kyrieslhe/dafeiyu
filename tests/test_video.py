@@ -63,3 +63,17 @@ class VideoTests(unittest.TestCase):
         self.assertEqual(result['duration_seconds'],3);self.assertEqual(len(result['samples']),4)
         self.assertEqual(result['samples'][0]['seconds'],0)
         self.assertTrue(all(Path(item['path']).is_file() for item in result['samples']))
+
+    @unittest.skipUnless(os.environ.get('DAFEIYU_TEST_VIDEO')=='1','optional pinned codec image')
+    def test_real_aac_extracts_bounded_mono_pcm(self):
+        import wave
+        import dafeiyu.video as module
+        from video_fixture import create_clip
+        p=create_clip(self.root/'fixture',module.RUNTIME,audio=True)
+        result=decode(p,self.root/'decoded')
+        self.assertEqual(result['audio_file'],'audio.wav')
+        self.assertGreater(result['audio_seconds'],2.9)
+        self.assertLess(result['audio_seconds'],3.2)
+        with wave.open(str(self.root/'decoded/audio.wav')) as audio:
+            self.assertEqual((audio.getnchannels(),audio.getsampwidth(),audio.getframerate()),(1,2,16000))
+            self.assertTrue(any(audio.readframes(audio.getnframes())))
