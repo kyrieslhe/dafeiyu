@@ -3,6 +3,10 @@ import os
 import sqlite3
 import time
 import uuid
+import shutil
+import subprocess
+import tempfile
+import signal
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -19,12 +23,18 @@ class Model:
         self.endpoint = os.environ.get('DAFEIYU_ENDPOINT', '').rstrip('/')
         self.name = os.environ.get('DAFEIYU_MODEL', '')
         self.key = os.environ.get('DAFEIYU_API_KEY', '')
+        self.provider = os.environ.get('DAFEIYU_PROVIDER', 'codex')
+        self.codex = os.environ.get('DAFEIYU_CODEX_BIN') or shutil.which('codex')
 
     @property
     def ready(self):
-        return bool(self.endpoint and self.name)
+        return bool(self.codex) if self.provider == 'codex' else bool(self.endpoint and self.name)
 
     def reply(self, messages):
+        if self.provider == 'codex':
+            return self.codex_reply(messages)
+        if self.provider != 'api':
+            raise ModelError('未知模型提供方。使用 codex 或 api。')
         if not self.ready:
             raise ModelError('模型未配置。请设置 DAFEIYU_ENDPOINT、DAFEIYU_MODEL 和所需 API Key；管理命令仍可使用。')
         if not (self.endpoint.startswith('https://') or self.endpoint.startswith('http://127.0.0.1:') or self.endpoint.startswith('http://localhost:')):
@@ -51,6 +61,41 @@ class Model:
             raise ModelError('模型网络超时或响应格式错误；未保存虚构回复。') from None
 
 
+    def codex_reply(self, messages):
+        if not self.codex:
+            raise ModelError('找不到 Codex CLI；请设置 DAFEIYU_CODEX_BIN 为可执行文件路径。')
+        # Official CLI owns authentication; never read, copy or export its credentials.
+        with tempfile.TemporaryDirectory(prefix='dafeiyu-') as directory:
+            output = Path(directory) / 'reply.txt'
+            command = [self.codex, 'exec', '--ignore-user-config', '--ephemeral',
+                       '--skip-git-repo-check', '--sandbox', 'read-only',
+                       '-c', 'features.shell_tool=false', '-c', 'features.exec_tool=false',
+                       '-C', directory, '-o', str(output), '-']
+            if self.name:
+                command[2:2] = ['--model', self.name]
+            prompt = ('只进行文本对话，不使用任何工具，不读取任何文件、不运行命令。'
+                      '以下是聊天上下文 JSON，请按 system 中的人格回复最后一条 user 消息：\n'
+                      + json.dumps(messages, ensure_ascii=False))
+            process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE, text=True, start_new_session=True)
+            try:
+                _, _ = process.communicate(prompt, timeout=90)
+            except (subprocess.TimeoutExpired, KeyboardInterrupt):
+                os.killpg(process.pid, signal.SIGTERM)
+                try:
+                    process.communicate(timeout=3)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.communicate()
+                raise ModelError('Codex 调用超时或中断；子进程已终止。') from None
+            if process.returncode != 0 or not output.exists():
+                raise ModelError('Codex 调用失败。请运行 codex login status 检查登录与额度；不自动切换 API。')
+            result = output.read_text().strip()
+            if not result:
+                raise ModelError('Codex 返回空回复。')
+            return result
+
+
 class Fish:
     def __init__(self, home='var', model=None, clock=time.time):
         self.home = Path(home).resolve()
@@ -61,6 +106,7 @@ class Fish:
         self.db.row_factory = sqlite3.Row
         self.db.execute('PRAGMA journal_mode=WAL')
         self.db.executescript('''
+        CREATE TABLE IF NOT EXISTS routines (id INTEGER PRIMARY KEY,at TEXT,goal TEXT,last_day TEXT);
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY,value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY,role TEXT,content TEXT,created REAL);
         CREATE TABLE IF NOT EXISTS memories (id INTEGER PRIMARY KEY,content TEXT UNIQUE,created REAL);
@@ -134,6 +180,19 @@ class Fish:
 
     def tick(self):
         now = self.clock()
+        local = datetime.fromtimestamp(now, ZoneInfo('Asia/Hong_Kong'))
+        day, at = local.strftime('%Y-%m-%d'), local.strftime('%H:%M')
+        with self.db:
+            paused = self.db.execute("SELECT value FROM settings WHERE key='paused'").fetchone()[0] == '1'
+            if not paused:
+                for routine in self.db.execute('SELECT * FROM routines').fetchall():
+                    if at >= routine['at'] and routine['last_day'] != day:
+                        count = self.db.execute('SELECT count(*) FROM tasks WHERE created>?', (now-86400,)).fetchone()[0]
+                        if count >= 10:
+                            break
+                        identifier = 'daily-%s-%s' % (routine['id'], day)
+                        self.db.execute("INSERT OR IGNORE INTO tasks(id,kind,goal,state,due,created) VALUES (?,'daily',?,'queued',?,?)", (identifier, routine['goal'], now, now))
+                        self.db.execute('UPDATE routines SET last_day=? WHERE id=?', (day, routine['id']))
         with self.db:
             self.db.execute("UPDATE tasks SET state='failed',error='运行中断或超时；请重新创建任务' WHERE state='running' AND lease<?", (now,))
             if self.db.execute("SELECT value FROM settings WHERE key='paused'").fetchone()[0] == '1':
@@ -183,6 +242,22 @@ class Fish:
             return self.enqueue('reminder', goal, dt.timestamp())
         if command in ('/draft', '/daily'):
             return self.enqueue(command[1:], argument or '请根据已有记忆写，不编造经历。')
+        if command == '/routine':
+            at, _, goal = argument.partition(' ')
+            datetime.strptime(at, '%H:%M')
+            if len(at) != 5 or not goal.strip():
+                raise ValueError('格式：/routine 21:00 札记主题')
+            with self.db:
+                if self.db.execute('SELECT count(*) FROM routines').fetchone()[0] >= 1:
+                    raise ValueError('首版最多一个每日札记计划；先 /unroutine 编号。')
+                self.db.execute('INSERT INTO routines(at,goal) VALUES (?,?)', (at, goal[:2000]))
+            return '已创建每日札记计划（香港时间）；仅写入本地待汇报箱，可能消耗 Codex 额度。'
+        if command == '/routines':
+            return self.rows('SELECT * FROM routines')
+        if command == '/unroutine':
+            with self.db:
+                self.db.execute('DELETE FROM routines WHERE id=?', (int(argument),))
+            return '计划已移除；已入队任务需单独取消。'
         if command == '/tasks':
             return self.rows('SELECT id,kind,goal,state,error FROM tasks ORDER BY created DESC LIMIT 30')
         if command == '/cancel':
@@ -223,7 +298,7 @@ HELP = '''🐳 大肥鱼 · 本地私人伙伴
 /remind 2026-12-01T09:00 内容   香港时间的一次提醒
 /draft 主题           后台生成草稿，需要模型；不联网
 /daily                排队生成一次相处札记，需要模型
-/tasks                查看任务与错误
+/routine 21:00 主题    授权每天生成一次札记（消耗模型额度）\n/routines /unroutine 编号   查看／移除计划\n/tasks                查看任务与错误
 /cancel 任务编号       取消任务
 /pause /resume        暂停或恢复新任务
 /inbox /ack 编号      查看待汇报／标记查看
