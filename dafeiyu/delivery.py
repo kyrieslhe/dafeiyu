@@ -1,0 +1,54 @@
+"""At-most-one automatic send after a fresh inbound context. Never treats accepted as read."""
+import json
+from pathlib import Path
+import subprocess
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from .channel import tables
+
+
+def deliver(fish, runner=subprocess.run):
+    tables(fish)
+    now=fish.clock()
+    with fish.db:
+        fish.db.execute("UPDATE deliveries SET state='delivery_unknown' WHERE state='sending' AND updated<?",(now-90,))
+        if fish.db.execute("SELECT value FROM settings WHERE key='paused'").fetchone()[0]=='1': return None
+        binding=fish.db.execute('SELECT * FROM channel_binding WHERE singleton=1').fetchone()
+        if not binding: return None
+        row=fish.db.execute('''SELECT o.*,t.kind FROM outbox o JOIN tasks t ON t.id=o.task_id
+          LEFT JOIN deliveries d ON d.outbox_id=o.id WHERE o.seen=0 AND t.state IN ('succeeded','waiting_approval')
+          AND (d.outbox_id IS NULL OR (d.state='waiting_context' AND d.updated<?)) ORDER BY o.id LIMIT 1''',(binding['last_seen'],)).fetchone()
+        if not row:return None
+        fresh=0<=now-binding['last_seen']<90
+        hour=datetime.fromtimestamp(now,ZoneInfo('Asia/Hong_Kong')).hour
+        if row['kind']!='reminder' and (hour>=23 or hour<8):return None
+        if not fresh:
+            fish.db.execute("INSERT OR REPLACE INTO deliveries VALUES (?,'waiting_context',NULL,?)",(row['id'],now))
+            return 'waiting_context'
+        # Reserve before sending; crashes and timeouts never cause blind retries.
+        claimed=fish.db.execute("INSERT OR IGNORE INTO deliveries VALUES (?,'sending',NULL,?)",(row['id'],now)).rowcount
+        if not claimed:
+            claimed=fish.db.execute("UPDATE deliveries SET state='sending',updated=? WHERE outbox_id=? AND state='waiting_context'",(now,row['id'])).rowcount
+        if not claimed:return None
+    script=Path(__file__).resolve().parent.parent/'scripts/openclaw'
+    message='🐳 任务 '+row['task_id']+'\n'+row['content'][:2500]
+    if len(row['content'])>2500:message+='\n完整成果：大肥鱼 /result '+row['task_id']
+    command=[str(script),'message','send','--channel','openclaw-weixin','--account',binding['account'],'--target',binding['sender'],'--message',message,'--json']
+    state='delivery_unknown';error=None
+    try:
+        result=runner(command,capture_output=True,text=True,timeout=60)
+        # Re-check binding before future attempts. In-flight send has already been admitted.
+        if result.returncode==0:
+            try: json.loads(result.stdout);state='accepted'
+            except ValueError:error='发送返回格式异常，投递结果不确定。'
+        else:
+            combined=(result.stdout+result.stderr).lower()
+            if any(term in combined for term in ('context_token','context token','context expired','context is required')):
+                state='waiting_context';error='上下文失效；等待用户新消息。'
+            elif any(term in combined for term in ('unauthorized','forbidden','401','403')):
+                state='auth_failed';error='渠道认证失败，需本机检查登录。'
+            else:error='发送失败或结果不确定；不自动重复发送。'
+    except (OSError,subprocess.TimeoutExpired):error='发送超时或进程失败，结果不确定；不自动重复发送。'
+    with fish.db:
+        fish.db.execute('UPDATE deliveries SET state=?,error=?,updated=? WHERE outbox_id=?',(state,error,now,row['id']))
+    return state

@@ -1,67 +1,76 @@
 # 🐳 大肥鱼
 
-一个有稳定口吻、可纠正记忆和共同日记的私人 AI 伙伴。受 DeepSeek 蓝鲸社区二创启发，不是 DeepSeek 官方产品。这里不包含社区角色图片或他人的人设卡。
+有自己的口吻、长期记忆和共同日记的私人 AI 伙伴。通过官方 Codex CLI 使用已登录 ChatGPT 账号的可用额度；没有默认付费 API 备用路线。受 DeepSeek 蓝鲸社区形象启发，不是 DeepSeek 官方产品，不包含他人的角色图片或人设卡。
 
-**v0.1 是本地终端版。默认通过官方 Codex CLI 和现有 ChatGPT 登录推理，无需 API Key。微信尚未接入，不能称为微信 MVP。**
+**v0.2：微信私聊桥接、带实际来源的联网研究、容器隔离的 Python 编程候选与审批。** 本机已验证微信登录、身份绑定与真实模型聊天，研究和容器编程均完成真实调用；消息窗口和跨日稳定性仍需持续观察。详细证据见 [验证记录](docs/verification.md)。
 
-## 开始相处
+## 本地开始
 
-需要 Python 3.9+（含系统时区数据）和已登录的 Codex CLI：
+需要 Python 3.9+ 和已登录的官方 Codex CLI。零第三方 Python 依赖。
 
 ```sh
 codex login status
-python3 -m dafeiyu setup
 python3 -m dafeiyu
 ```
 
-Mac 用户可以双击 `启动大肥鱼.command`。若系统限制双击，可在终端执行该文件。提示找不到 Codex 时，将 `DAFEIYU_CODEX_BIN` 设置为 CLI 的完整路径。
+Mac 可双击「启动大肥鱼.command」。数据保存在项目下的私人 `var/`，不进入 Git。聊天及 Worker 应使用同一个目录，或都指定同一 `--home /绝对路径`。
 
-试试：
+## 接入微信
 
-```text
-/remember 我喜欢简洁中文
-你好，大肥鱼。以后我们一起慢慢把日子过起来。
-/diary 今天我们第一次见面，决定先把你的记忆做好。
-/memories
-/daily
-/tasks
-/inbox
-```
-
-`/daily` 和 `/draft 主题` 是后台任务，需要另外一个终端运行：
+本机需要 Docker Desktop 才能执行隔离测试；微信渠道需要固定版本 Node/OpenClaw：
 
 ```sh
-python3 -m dafeiyu worker
+python3 scripts/setup_runtime.py
+./scripts/openclaw channels login --channel openclaw-weixin
+python3 scripts/services.py start
 ```
 
-默认数据目录为当前目录的 `var/`。聊天和 worker 必须从同一项目目录启动；也可两边都使用 `python3 -m dafeiyu --home /绝对路径/私人目录 ...`。
+使用自己的微信扫码添加 ClawBot，不需要注册鱼的个人微信号。二维码与凭据保留在本机。首次私聊后，在本机核对候选身份并绑定：
 
-`/routine 21:00 回顾我们的相处，写一小段札记` 明确授权每天香港时间 21:00 生成一次札记，会消耗模型额度。最多一个计划；错过多天只生成当天一次。`/routines` 查看，`/unroutine 编号` 删除。默认没有自动启用任何计划。Mac 休眠、终端退出时不执行；worker 重启后恢复。
+```sh
+python3 -m dafeiyu.channel status
+python3 -m dafeiyu.channel bind ACCOUNT SENDER
+```
 
-`/remind 2026-12-01T09:00 记得喝水` 创建一次本地提醒。没有系统通知或微信推送；通过 `/inbox` 查看，`/ack 编号` 标记查看。输入 `/help` 获取所有命令。
+在微信中可以说：
 
-## 记忆和人格
+```text
+你好，大肥鱼。
+记住我喜欢简洁中文
+帮我研究 Python 官方当前稳定版本，附来源。
+大肥鱼 /tasks
+大肥鱼 /result 任务编号
+大肥鱼 /diary 今天我们终于在微信见面了。
+```
 
-人格在 `dafeiyu/persona.txt`，可随项目演进。显式 `/remember` 才写入长期记忆，模型不会自动把玩笑或推断升级成事实。取最近十条记忆、三条用户日记和十六条聊天构建上下文；首版尚无语义检索。
+普通聊天由大肥鱼桥接处理；管理命令加「大肥鱼 」前缀，避免 OpenClaw 抢先解释裸 slash。本人绑定前不开放聊天记忆和任务，群聊不支持。插件只使用官方渠道，不读取已有个人聊天。
 
-`/forget 编号` 删除记忆时会清空聊天和共同日记，避免旧上下文再次带入该事实，这是首版有意采用的保守行为；任务成果和历史备份需另行删除。`/clear` 仅清空聊天。聊天保留 30 天，每次启动清理过期内容。
+## 让它做事
 
-## 模型与权限
+- **记忆与日记**：`/remember 内容`、`/memories`、`/forget 编号`、`/diary 内容`。只有明确记忆指令写入长期记忆；模型推断不自动变成事实。遗忘会同时清空聊天与共同日记；历史任务成果和旧备份需另行删除。
+- **研究**：`/research 问题或HTTPS链接`。最多四个来源，实际抓取并保存 URL、时间、哈希与正文摘录，再综合报告。没有来源就失败，不用草稿冒充研究。报告落盘 `var/reports/`。
+- **编程**：将小型 Python 项目放在 `var/projects/项目名`，使用 `/code 项目名 功能目标`。模型生成候选，Docker 无网络运行 unittest，通过后进入 waiting_approval；`/diff 任务编号` 查看差异，再 `/approve 任务编号 SHA256` 精确确认。5 分钟有效、仅消费一次；原项目有变化则拒绝应用。不会在宿主机执行生成的代码，不自动提交或推送。
+- **日常计划**：`/routine 21:00 今日相处札记` 明确授权每日一次模型札记，消耗 Codex 额度；默认不启用。香港时间、离线后合并，最多一个计划。
+- **提醒与控制**：`/remind 2026-12-01T09:00 内容`、`/tasks`、`/result 任务编号`、`/cancel 任务编号`、`/pause`、`/resume`、`/inbox`、`/ack 编号`、`/deliveries`、`/projects`、`/help`。
 
-默认 `DAFEIYU_PROVIDER=codex`。每次调用使用 `codex exec --ignore-user-config --ephemeral`，在临时工作目录以 read-only 沙箱运行，关闭 shell/exec 功能，不加载用户配置中的 MCP 插件。应用不读取、不复制 OAuth 凭据；认证由官方 CLI 自己处理。可通过 `DAFEIYU_MODEL` 显式指定账号可访问的模型；默认使用 CLI 默认模型，不宣称额度无限。
+只运行终端版时，用另一个终端启动 `python3 -m dafeiyu worker`。微信后台投递需 `worker --deliver`；services.py 已包含这一选项。
 
-这是受信任本机单用户原型，不是安全隔离的任意代码 Agent。read-only 不代表文件系统完全不可读；首版不接受网页、附件或其他用户输入，也不开放代码执行、支付、发布或任意系统操作。未建立容器隔离前，不扩展这些权限。
+## 运行与限制
 
-调用超时 90 秒会结束整个子进程组；模型失败不自动重试，不切换付费 API。任务取消后在途文本调用可能继续到超时，但结果不会写入待汇报箱。没有账单余额查询，不能显示真实剩余额度。
+`python3 scripts/services.py status|stop|restart` 管理本项目网关和 worker。进程日志在私人 var 目录；没有安装系统登录启动项。Mac 休眠时不执行，退出登录或重启后需重新启动。
 
-可选 API 兼容模式需自行显式设置 `DAFEIYU_PROVIDER=api`、`DAFEIYU_ENDPOINT`（以 API base URL 为值）、`DAFEIYU_MODEL` 和 `DAFEIYU_API_KEY`。单独计费；默认关闭，不要把密钥写进 Git。
+平台消息不保证随时可推送。本地只在最近真实来信后的保守窗口尝试；窗口失效等待新消息，超时记为 delivery_unknown，不盲目重发；accepted 不等于已读。23:00–08:00 除明确提醒外不主动投递，完整成果始终可以查询。服务额度耗尽不会自动购买或切换付费 API。
 
-## 开发与恢复
+目前编程只支持无第三方依赖的小型 Python 项目；不支持任意桌面控制、支付、自动发布或安装项目依赖。研究抓取仅支持公开 HTTPS 文本来源。当前记忆检索仍是最近记录，不是完整的语义记忆系统。报告中的推断需要结合来源判断。
 
-零第三方 Python 依赖，无需 pip。执行 `make test` 和 `make build`；GitHub Actions 在 Python 3.9、3.12 上测试，不使用私人凭据或真实模型额度。
+## 验证与恢复
 
-SQLite WAL 保存记忆、日记、任务与 outbox。成果正文和 outbox 在同一事务提交。启动时未过期的 running 任务会等待 120 秒租约；过期后标为 failed，避免自动重复调用。可通过 `/tasks` 查看错误并重新创建。每 24 小时最多创建十个后台任务。
+```sh
+python3 -m unittest discover -s tests -v
+var/runtime/node/bin/node --test tests/openclaw.test.mjs
+DAFEIYU_TEST_DOCKER=1 python3 -m unittest discover -s tests -p test_docker.py -v
+```
 
-备份：先停止聊天与 worker，再复制整个 `var/` 至私人加密存储。恢复：停止所有进程，将该目录恢复到 `--home` 指定位置后运行 doctor。备份含私人记忆，请不要上传 GitHub。删除内容后旧备份仍有旧数据，应自行删除。首版不提供自动加密备份。
+CI 在 Python 3.9/3.12、Node 26 和真实 Docker 中检查，不使用私人认证。升级前停止服务，备份整个私人 var；恢复时停机还原。凭据、数据库、来源正文与报告均不得提交 Git。
 
-详见 [验证记录](docs/verification.md) 和 [后续计划](docs/roadmap.md)。原始 `proposal.md` 是更完整的目标规格，不代表现有交付范围。
+[完整接入与安全边界](docs/connected-setup.md) · [验证记录](docs/verification.md) · [原始目标规格](proposal.md)

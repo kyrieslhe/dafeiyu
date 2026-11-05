@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@tencent-weixin/openclaw-weixin": "2.4.10",
+    "openclaw": "2026.10.10"
+  }
+}

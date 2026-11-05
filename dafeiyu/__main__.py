@@ -1,3 +1,4 @@
+import signal
 import argparse
 import json
 import time
@@ -5,11 +6,15 @@ from .core import Fish, HELP, ModelError
 
 
 def main():
+    def interrupted(_signum, _frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, interrupted)
     parser = argparse.ArgumentParser(description='🐳 大肥鱼私人伙伴')
     parser.add_argument('--home', default='var', help='私人数据目录（默认 ./var）')
     parser.add_argument('mode', nargs='?', default='chat', choices=['chat', 'worker', 'doctor', 'setup', 'run'])
     parser.add_argument('message', nargs='?', help='run 模式执行单条命令')
     parser.add_argument('--once', action='store_true', help='worker 只处理一个到期任务')
+    parser.add_argument('--deliver', action='store_true', help='worker 启用对已绑定用户的微信结果投递')
     args = parser.parse_args()
     fish = Fish(args.home)
     def show(value):
@@ -24,6 +29,9 @@ def main():
                 identifier = fish.tick()
                 if identifier:
                     print('processed ' + identifier, flush=True)
+                if args.deliver:
+                    from .delivery import deliver
+                    deliver(fish)
                 if args.once:
                     break
                 time.sleep(1)
