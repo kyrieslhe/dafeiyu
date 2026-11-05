@@ -68,3 +68,9 @@ class CuriosityTests(unittest.TestCase):
         def reader(_):calls.append(1);return {'status':'ok','remaining':{'primary':50,'secondary':60},'next_reset':None}
         self.assertEqual(guard(self.f,reader=reader)['status'],'ok');guard(self.f,reader=reader);self.assertEqual(len(calls),1)
         self.now+=61;guard(self.f,reader=reader);self.assertEqual(len(calls),2)
+
+    def test_worker_low_quota_never_starts_an_automatic_model_call(self):
+        row=self.schedule();self.f.model=Model()
+        with patch('dafeiyu.quota.guard',return_value={'status':'low'}):self.assertIsNone(self.f.tick())
+        saved=self.f.db.execute('SELECT * FROM tasks WHERE id=?',(row['id'],)).fetchone()
+        self.assertEqual(saved['state'],'queued');self.assertEqual(saved['attempts'],0);self.assertEqual(self.f.model.calls,[])
