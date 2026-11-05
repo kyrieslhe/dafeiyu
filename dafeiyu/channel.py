@@ -56,7 +56,14 @@ def inbound(fish, event):
     else:
         if text.startswith('大肥鱼 '): text=text[len('大肥鱼 '):].strip()
         try:
-            if media:
+            if media and any(isinstance(item,dict) and str(item.get('mime','')).startswith('audio/') for item in media):
+                from .media import staged_audio
+                from .speech import transcribe
+                with staged_audio(fish.home,media) as audio:
+                    transcript=transcribe(audio)
+                fish.model.timeout_seconds=60
+                result=fish.chat('语音转写（可能有误）：'+transcript,allow_actions=False)
+            elif media:
                 from .media import staged_images
                 if text.startswith('/'):
                     raise ValueError('带图片时请用普通文字描述问题，管理命令请单独发送。')
