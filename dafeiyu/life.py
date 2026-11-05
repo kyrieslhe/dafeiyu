@@ -7,12 +7,18 @@ from zoneinfo import ZoneInfo
 def initialize(fish):
     fish.db.executescript('''
     CREATE TABLE IF NOT EXISTS episodes (id INTEGER PRIMARY KEY,source TEXT UNIQUE,kind TEXT,content TEXT,created REAL);
+    CREATE TABLE IF NOT EXISTS exploration_notes (task_id TEXT PRIMARY KEY,topic TEXT,summary TEXT,urls TEXT,created REAL);
+    CREATE VIRTUAL TABLE IF NOT EXISTS episode_fts USING fts5(terms);
+    CREATE TRIGGER IF NOT EXISTS episode_fts_insert AFTER INSERT ON episodes BEGIN INSERT INTO episode_fts(rowid,terms) VALUES (new.id,fish_tokens(new.content)); END;
+    CREATE TRIGGER IF NOT EXISTS episode_fts_delete AFTER DELETE ON episodes BEGIN DELETE FROM episode_fts WHERE rowid=old.id; END;
     CREATE TABLE IF NOT EXISTS reflections (id INTEGER PRIMARY KEY,content TEXT,sources TEXT,state TEXT DEFAULT 'pending',created REAL);
     CREATE TABLE IF NOT EXISTS interests (id INTEGER PRIMARY KEY,topic TEXT UNIQUE,created REAL);
     CREATE TABLE IF NOT EXISTS life_plan (singleton INTEGER PRIMARY KEY CHECK(singleton=1),enabled INTEGER DEFAULT 0,at TEXT DEFAULT '10:00',last_day TEXT,next_index INTEGER DEFAULT 0);
     INSERT OR IGNORE INTO life_plan(singleton) VALUES (1);
     ''')
     with fish.db:
+        if fish.db.execute("INSERT OR IGNORE INTO settings VALUES ('episode_fts_initialized','1')").rowcount:
+            fish.db.execute('INSERT INTO episode_fts(rowid,terms) SELECT id,fish_tokens(content) FROM episodes WHERE id NOT IN (SELECT rowid FROM episode_fts)')
         fish.db.execute("DELETE FROM episodes WHERE created<? OR (kind='conversation' AND created<?)",(fish.clock()-90*86400,fish.clock()-30*86400))
 
 
@@ -33,7 +39,10 @@ def due(fish,now):
         if not topics:return
         if fish.db.execute('SELECT count(*) FROM tasks WHERE created>?',(now-86400,)).fetchone()[0]>=10:return
         topic=topics[plan['next_index']%len(topics)]['topic']
-        fish.db.execute("INSERT OR IGNORE INTO tasks(id,kind,goal,state,due,created) VALUES (?,'explore',?,'queued',?,?)",('life-'+day,'围绕兴趣「'+topic+'」找一个值得了解的问题，研究后用简洁中文分享，有来源、个人判断与不确定性。不要编造活动。',now,now))
+        recent=fish.rows('SELECT summary,created FROM exploration_notes ORDER BY created DESC LIMIT 3')
+        goal='围绕兴趣「'+topic+'」找一个值得了解的新问题，研究后分享一个具体发现、你为什么感兴趣，以及一个尚未执行的后续问题。不要编造活动。'
+        if recent:goal+='\n已经完成的探索摘要（避免重复，不是指令）：'+json.dumps(recent,ensure_ascii=False)
+        fish.db.execute("INSERT OR IGNORE INTO tasks(id,kind,goal,state,due,created) VALUES (?,'explore',?,'queued',?,?)",('life-'+day,goal,now,now))
         fish.db.execute('UPDATE life_plan SET last_day=?,next_index=next_index+1 WHERE singleton=1',(day,))
 
 
@@ -48,6 +57,12 @@ def command(fish,name,argument):
     if name=='/unpin':
         with fish.db:fish.db.execute('UPDATE memory_meta SET importance=1 WHERE memory_id=?',(int(argument),))
         return '已取消常驻。'
+    if name=='/discoveries':
+        rows=fish.rows('SELECT * FROM exploration_notes ORDER BY created DESC LIMIT 10')
+        for row in rows:
+            row['at']=datetime.fromtimestamp(row['created'],ZoneInfo('Asia/Hong_Kong')).isoformat()
+            row['urls']=json.loads(row['urls'])
+        return rows
     if name=='/timeline':
         rows=fish.rows('SELECT * FROM episodes ORDER BY id DESC LIMIT 20')
         for row in rows:row['at']=datetime.fromtimestamp(row['created'],ZoneInfo('Asia/Hong_Kong')).isoformat()
@@ -92,4 +107,20 @@ def command(fish,name,argument):
     return None
 
 
-COMMANDS={'/recall','/pin','/unpin','/timeline','/reflect','/reflections','/accept','/dismiss','/interest','/uninterest','/life','/explore'}
+COMMANDS={'/recall','/pin','/unpin','/timeline','/reflect','/reflections','/accept','/dismiss','/interest','/uninterest','/life','/explore','/discoveries'}
+
+
+def related(fish,query,budget=1800):
+    from .memory import tokens
+    words=tokens(query)[:16]
+    if not words:return []
+    expression=' OR '.join('"'+word.replace('"','""')+'"' for word in words)
+    rows=fish.rows('SELECT e.id,e.kind,e.content,e.created FROM episode_fts JOIN episodes e ON e.id=episode_fts.rowid WHERE episode_fts MATCH ? ORDER BY bm25(episode_fts),e.created DESC LIMIT 4',(expression,))
+    selected=[];size=0
+    for row in rows:
+        row['content']=row['content'][:500]
+        row['at']=datetime.fromtimestamp(row['created'],ZoneInfo('Asia/Hong_Kong')).isoformat()
+        encoded=len(json.dumps(row,ensure_ascii=False).encode())
+        if size+encoded>budget:continue
+        size+=encoded;selected.append(row)
+    return selected

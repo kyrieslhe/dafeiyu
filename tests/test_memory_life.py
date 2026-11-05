@@ -74,7 +74,7 @@ class MemoryLife(unittest.TestCase):
     def test_life_is_opt_in_with_budget_and_offline_dedupe(self):
         self.fish.tick();self.assertEqual(self.fish.command('/tasks'),[])
         self.fish.command('/interest 开源软件');self.fish.command('/life on 00:00')
-        def fake(*args):return ('真实研究结果',{'sources':[]})
+        def fake(*args,**kwargs):return ('真实研究结果',{'sources':[]})
         with patch('dafeiyu.research.research',side_effect=fake):
             self.fish.tick();self.fish.tick()
             self.assertEqual(len(self.fish.command('/tasks')),1)
@@ -115,6 +115,46 @@ class MemoryLife(unittest.TestCase):
         with self.assertRaises(ValueError):self.fish.command('/life on 10:00')
         self.fish.command('/interest 科学')
         with self.assertRaises(ValueError):self.fish.command('/life on 25:00')
+
+    def test_topic_history_recall_is_grounded_and_deleted_with_memory(self):
+        from dafeiyu.life import related
+        record(self.fish,'chat:old','conversation','用户说：我今天研究了鲸鱼睡眠。回复摘录：一起讨论了鲸鱼睡眠。')
+        record(self.fish,'chat:other','conversation','用户说：晚饭吃面。')
+        rows=related(self.fish,'鲸鱼睡眠有什么新发现')
+        self.assertTrue(rows);self.assertIn('鲸鱼睡眠',rows[0]['content']);self.assertIn('+08:00',rows[0]['at'])
+        self.fish.remember('测试偏好');self.fish.forget(1)
+        self.assertEqual(related(self.fish,'鲸鱼睡眠'),[])
+        self.assertEqual(self.fish.rows('SELECT * FROM episode_fts'),[])
+
+    def test_exploration_stores_real_findings_and_short_share_not_fetch_log(self):
+        def researched(*args,**kwargs):
+            self.assertTrue(kwargs.get('companion'))
+            return ('刚读到一个有趣发现。[来源](https://example.com)\n\n### 抓取记录\n技术哈希日志',{'sources':[{'url':'https://example.com'}]})
+        self.fish.command('/explore 鲸鱼')
+        with patch('dafeiyu.research.research',side_effect=researched):self.fish.tick()
+        self.assertEqual(len(self.fish.command('/discoveries')),1)
+        finding=self.fish.command('/discoveries')[0]
+        self.assertEqual(finding['urls'],['https://example.com'])
+        self.assertNotIn('技术哈希',self.fish.command('/inbox')[0]['content'])
+        self.assertIn('技术哈希',self.fish.rows('SELECT result FROM tasks')[0]['result'])
+
+    def test_next_autonomous_goal_uses_previous_actual_discoveries(self):
+        with self.fish.db:self.fish.db.execute('INSERT INTO exploration_notes VALUES (?,?,?,?,?)',('old','科学','已经读过鲸鱼睡眠','[]',self.now))
+        self.fish.command('/interest 科学');self.fish.command('/life on 00:00')
+        from dafeiyu.life import due
+        due(self.fish,self.now)
+        self.assertIn('已经读过鲸鱼睡眠',self.fish.command('/tasks')[0]['goal'])
+        self.assertEqual(len(self.fish.command('/tasks')),1)
+
+    def test_forget_clears_cached_replies_and_derived_discoveries(self):
+        from dafeiyu.channel import tables
+        tables(self.fish);self.fish.remember('喜欢蓝色')
+        with self.fish.db:
+            self.fish.db.execute('INSERT INTO exploration_notes VALUES (?,?,?,?,?)',('old','科学','涉及偏好的发现','[]',self.now))
+            self.fish.db.execute("INSERT INTO inbound VALUES ('test','completed','包含偏好的旧回复',?)",(self.now,))
+        self.fish.forget(1)
+        self.assertEqual(self.fish.command('/discoveries'),[])
+        self.assertIsNone(self.fish.db.execute('SELECT reply FROM inbound').fetchone()[0])
 
 
 if __name__=='__main__':unittest.main()
