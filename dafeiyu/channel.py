@@ -20,12 +20,13 @@ def tables(fish):
         fish.db.execute('DELETE FROM inbound_stats WHERE received<?',(fish.clock()-30*86400,))
         fish.db.execute('UPDATE inbound SET reply=NULL WHERE created<?',(fish.clock()-30*86400,))
         fish.db.execute("UPDATE inbound SET state='interrupted',reply='上次处理已中断，未自动重放。' WHERE state='running' AND created<?",(fish.clock()-120,))
+        fish.db.execute("UPDATE inbound_stats SET outcome='interrupted',finished=? WHERE outcome='processing' AND id IN (SELECT id FROM inbound WHERE state='interrupted')",(fish.clock(),))
 
 
 def inbound(fish, event):
     tables(fish)
     if event.get('channel') != 'openclaw-weixin' or event.get('group') is not False:
-        return '只支持绑定用户的微信文字私聊。'
+        return '只支持绑定用户的微信私聊。'
     account, sender, message = (event.get(k) for k in ('account','sender','message_id'))
     if not all(isinstance(x,str) and x for x in (account,sender,message)):
         return '缺少稳定账号、发送者或消息编号，已停止处理。'
@@ -118,7 +119,7 @@ def health(fish):
     rows=fish.rows('SELECT received,finished,outcome FROM inbound_stats WHERE received>?',(now-86400,))
     durations=sorted(max(0,r['finished']-r['received']) for r in rows if r['finished'] is not None)
     last=fish.db.execute('SELECT last_seen FROM channel_binding WHERE singleton=1').fetchone()
-    return {'inbound_24h':len(rows),'outcomes':{state:sum(r['outcome']==state for r in rows) for state in ('completed','failed','rejected','processing')},
+    return {'inbound_24h':len(rows),'outcomes':{state:sum(r['outcome']==state for r in rows) for state in ('completed','failed','rejected','interrupted','processing')},
             'p95_processing_seconds':round(durations[max(0,(95*len(durations)+99)//100-1)],2) if durations else None,
             'seconds_since_inbound':round(max(0,now-last['last_seen'])) if last and last['last_seen'] else None,
             'task_states':fish.rows('SELECT state,count(*) AS count FROM tasks GROUP BY state'),

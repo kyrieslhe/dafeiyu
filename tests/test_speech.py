@@ -70,6 +70,37 @@ class SpeechTests(unittest.TestCase):
                 def plan(self,messages):return {'action':'speak','argument':'你好','reply':'我说给你听'}
             f.model=Speak();self.assertIn('没有创建',f.chat('你好'))
             self.assertEqual(f.command('/tasks'),[])
+    def test_audio_asset_is_sent_only_to_owner_once(self):
+        from dafeiyu.delivery import deliver
+        with tempfile.TemporaryDirectory() as d:
+            f=Fish(d,clock=lambda:1793854800.0);self.addCleanup(f.close);tables(f)
+            with f.db:f.db.execute('INSERT INTO channel_binding VALUES (1,?,?,?)',('a','s',f.clock()))
+            p=f.home/'media/outbound'/('a'*32+'.wav');p.parent.mkdir(parents=True);p.write_bytes(wav())
+            key=f.enqueue('speech','你好')
+            with patch('dafeiyu.speech.synthesize',return_value=p):f.tick()
+            commands=[]
+            def send(command,**kwargs):commands.append(command);return subprocess.CompletedProcess(command,0,'{}','')
+            self.assertEqual(deliver(f,send),'accepted');self.assertIsNone(deliver(f,send))
+            self.assertEqual(commands[0][commands[0].index('--media')+1],str(p))
+            self.assertEqual(commands[0][commands[0].index('--target')+1],'s')
+    def test_missing_audio_is_not_sent_as_success(self):
+        from dafeiyu.delivery import deliver
+        with tempfile.TemporaryDirectory() as d:
+            f=Fish(d,clock=lambda:1793854800.0);self.addCleanup(f.close);tables(f)
+            with f.db:
+                f.db.execute('INSERT INTO channel_binding VALUES (1,?,?,?)',('a','s',f.clock()))
+                key=f.enqueue('speech','你好')
+                f.db.execute("UPDATE tasks SET state='succeeded' WHERE id=?",(key,))
+                f.db.execute('INSERT INTO outbox(task_id,content) VALUES (?,?)',(key,'已生成音频'))
+                f.db.execute('INSERT INTO task_assets VALUES (?,?,?)',(key,str(f.home/'outside.wav'),'audio/wav'))
+            self.assertEqual(deliver(f,lambda *a,**k:self.fail('sent missing audio')),'asset_missing')
+    def test_old_generated_audio_is_cleaned_without_touching_fresh_files(self):
+        from dafeiyu.speech import cleanup
+        with tempfile.TemporaryDirectory() as d:
+            f=Fish(d);self.addCleanup(f.close);p=f.home/'media/outbound';p.mkdir(parents=True)
+            old=p/('a'*32+'.wav');old.write_bytes(wav());fresh=p/('b'*32+'.wav');fresh.write_bytes(wav())
+            os.utime(old,(f.clock()-8*86400,)*2);cleanup(f)
+            self.assertFalse(old.exists());self.assertTrue(fresh.exists())
     @unittest.skipUnless(os.environ.get('DAFEIYU_TEST_SPEECH')=='1','optional installed macOS speech runtime')
     def test_real_local_tts_and_offline_asr(self):
         with tempfile.TemporaryDirectory() as d:

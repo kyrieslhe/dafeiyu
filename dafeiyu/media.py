@@ -64,7 +64,7 @@ def staged_audio(home,items):
         if len(data)>12*1024*1024:raise MediaError('语音文件过大。')
         with wave.open(io.BytesIO(data),'rb') as audio:
             duration=audio.getnframes()/audio.getframerate()
-            if audio.getnchannels() not in (1,2) or not 8000<=audio.getframerate()<=48000 or not 0<duration<=60:raise MediaError('语音限 60 秒、单声道或双声道 WAV。')
+            if audio.getsampwidth()!=2 or audio.getnchannels() not in (1,2) or not 8000<=audio.getframerate()<=48000 or not 0<duration<=60:raise MediaError('语音限 60 秒、16 位 PCM、单声道或双声道 WAV。')
     except (OSError,wave.Error,EOFError):raise MediaError('没有收到可解码的 WAV 语音；可先用微信转文字后发送。') from None
     staging=home/'media/staged';staging.mkdir(mode=0o700,parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='audio-',dir=staging) as directory:
