@@ -4,7 +4,7 @@
 
 main 使用 GitHub 分支保护，配置快照在 `.github/branch-protection.json`：
 
-- 所有修改经 PR，必须通过 test (3.9)、test (3.12)、bridge、isolation、privacy、runtime、recovery，检查绑定 GitHub Actions app。
+- 所有修改经 PR，必须通过 test (3.9)、test (3.12)、bridge、isolation、privacy、runtime、recovery、speech、browser、video，检查绑定 GitHub Actions app。
 - 合并前分支必须更新，管理员同样受限制。
 - 仅允许 squash merge，要求线性历史和解决所有讨论，合并后自动删除分支。
 - 禁止强推和删除 main。
