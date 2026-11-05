@@ -25,6 +25,10 @@
       {
         "context": "runtime",
         "app_id": 15368
+      },
+      {
+        "context": "recovery",
+        "app_id": 15368
       }
     ]
   },

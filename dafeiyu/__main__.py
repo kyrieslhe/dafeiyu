@@ -25,6 +25,7 @@ def main():
         elif args.mode == 'run':
             show(fish.command(args.message or '/help'))
         elif args.mode == 'worker':
+            backup_check=0.0
             while True:
                 identifier = fish.tick()
                 if identifier:
@@ -32,6 +33,10 @@ def main():
                 if args.deliver:
                     from .delivery import deliver
                     deliver(fish)
+                if time.monotonic()>=backup_check:
+                    from .backup import maybe_backup
+                    maybe_backup(fish)
+                    backup_check=time.monotonic()+60
                 if args.once:
                     break
                 time.sleep(1)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Manage only this project's gateway/worker, using PID plus process start time."""
+import fcntl
 import argparse
 import json
 import os
@@ -24,7 +25,19 @@ def state():
 def active(entry):return bool(entry.get('stamp')) and stamp(entry['pid'])==entry['stamp']
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('action',choices=['start','stop','status','restart']);args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('action',choices=['start','stop','status','restart']);parser.add_argument('--internal',action='store_true',help=argparse.SUPPRESS);args=parser.parse_args()
+    (ROOT/'var').mkdir(mode=0o700,exist_ok=True)
+    with open(ROOT/'var/services.lock','a') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX)
+        return control(args)
+
+
+def control(args):
+    paused=ROOT/'var/services.paused'
+    if args.action=='stop' and not args.internal:paused.touch()
+    if args.action in ('start','restart') and not args.internal:paused.unlink(missing_ok=True)
+    if args.action in ('start','restart') and args.internal and paused.exists():
+        print(json.dumps({'paused':True}));return
     records=state()
     if args.action in ('stop','restart'):
         for name,entry in records.items():

@@ -57,3 +57,14 @@ jobs:
       - run: node tests/runtime/compat.mjs integrations/runtime
       - run: integrations/runtime/node_modules/.bin/openclaw --version
       - run: npm audit --prefix integrations/runtime --audit-level=high
+  recovery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/setup_age.py
+      - run: python -m unittest discover -s tests -p test_backup.py -v
+        env:
+          DAFEIYU_TEST_AGE: '1'

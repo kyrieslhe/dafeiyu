@@ -76,7 +76,7 @@ def recall(fish,query,limit=10,budget=8000):
 
 
 def reject_secret(text):
-    if re.search(r'gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{24,}|-----BEGIN .*PRIVATE KEY|(?:密码|口令|验证码|api.?key|access.?token)\s*(?:是|为|[:：=])\s*\S+',text,re.I):
+    if re.search(r'AGE-SECRET-KEY-[A-Z0-9]{30,}|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{24,}|-----BEGIN .*PRIVATE KEY|(?:密码|口令|验证码|api.?key|access.?token)\s*(?:是|为|[:：=])\s*\S+',text,re.I):
         raise ValueError('这看起来包含密码、验证码或密钥，不写入长期记忆。请保存在密码管理器。')
 
 
