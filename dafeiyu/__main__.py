@@ -36,6 +36,8 @@ def main():
                 if time.monotonic()>=backup_check:
                     from .backup import maybe_backup
                     maybe_backup(fish)
+                    from .speech import cleanup
+                    cleanup(fish)
                     backup_check=time.monotonic()+60
                 if args.once:
                     break

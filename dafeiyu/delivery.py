@@ -34,6 +34,13 @@ def deliver(fish, runner=subprocess.run):
     message='🐳 任务 '+row['task_id']+'\n'+row['content'][:2500]
     if len(row['content'])>2500:message+='\n完整成果：大肥鱼 /result '+row['task_id']
     command=[str(script),'message','send','--channel','openclaw-weixin','--account',binding['account'],'--target',binding['sender'],'--message',message,'--json']
+    asset=fish.db.execute('SELECT path FROM task_assets WHERE task_id=?',(row['task_id'],)).fetchone()
+    if asset:
+        path=Path(asset['path']);root=fish.home/'media/outbound'
+        if not path.is_absolute() or path.resolve()!=path or not path.is_relative_to(root) or not path.is_file() or not 44<path.stat().st_size<=10*1024*1024:
+            with fish.db:fish.db.execute("UPDATE deliveries SET state='asset_missing',error='音频附件已失效，请重新生成。',updated=? WHERE outbox_id=?",(now,row['id']))
+            return 'asset_missing'
+        command+=['--media',str(path)]
     state='delivery_unknown';error=None
     try:
         result=runner(command,capture_output=True,text=True,timeout=60)
