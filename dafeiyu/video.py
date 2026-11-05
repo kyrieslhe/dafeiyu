@@ -33,8 +33,9 @@ def decode(path,output,cancelled=lambda:False,runtime=None):
     if source.is_symlink() or not source.is_file() or not 0<source.stat().st_size<=20*1024*1024:raise VideoError('视频已失效或超出 20MB。')
     output=Path(output).resolve()
     if output.exists():raise VideoError('视频输出目录必须是新目录。')
-    output.mkdir(mode=0o777,parents=True);output.chmod(0o777);name='fish-video-'+uuid.uuid4().hex[:12]
-    command=['docker','run','--pull=never','--rm','--init','--name',name,'--network=none','--read-only','--cap-drop=ALL','--security-opt','no-new-privileges','--user','65534:65534',
+    uid=os.getuid() or 65534;gid=os.getgid() if os.getuid() else 65534
+    output.mkdir(mode=0o700,parents=True);output.chmod(0o700 if os.getuid() else 0o777);name='fish-video-'+uuid.uuid4().hex[:12]
+    command=['docker','run','--pull=never','--rm','--init','--name',name,'--network=none','--read-only','--cap-drop=ALL','--security-opt','no-new-privileges','--user',str(uid)+':'+str(gid),
              '--memory','512m','--cpus','2','--pids-limit','64','--ulimit','fsize=2097152:2097152','--tmpfs','/tmp:rw,noexec,nosuid,nodev,size=64m',
              '--mount','type=bind,source='+str(source.resolve())+',target=/input/video,readonly','--mount','type=bind,source='+str(output)+',target=/output',image]
     child=None
