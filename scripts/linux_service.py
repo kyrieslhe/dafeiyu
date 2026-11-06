@@ -20,7 +20,7 @@ def definition(root=ROOT,python=sys.executable,home=None):
     root=Path(root).resolve();home=Path(home or Path.home())
     path=str(home/'.local/bin')+':'+str(home/'.npm-global/bin')+':/usr/local/bin:/usr/bin:/bin'
     return '\n'.join(['# Dafeiyu project: '+str(root),'[Unit]','Description=Dafeiyu private companion','StartLimitIntervalSec=600','StartLimitBurst=3','',
-        '[Service]','Type=exec','WorkingDirectory='+quote(root),'ExecStart='+quote(python)+' '+quote(root/'scripts/supervise.py'),
+        '[Service]','Type=exec','WorkingDirectory='+quote(root),'ExecStart='+quote(python).replace('$','$$')+' '+quote(root/'scripts/supervise.py').replace('$','$$'),
         'Environment='+quote('PATH='+path),'UMask=0077','Restart=on-failure','RestartSec=15','TimeoutStopSec=45','KillMode=mixed','StandardOutput=journal','StandardError=journal','',
         '[Install]','WantedBy=default.target',''])
 

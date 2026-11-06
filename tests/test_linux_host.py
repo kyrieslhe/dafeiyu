@@ -17,8 +17,8 @@ class LinuxHost(unittest.TestCase):
         for system,machine in [('Windows','AMD64'),('Linux','riscv64')]:
             with self.assertRaises(ValueError):module.distribution(system,machine)
     def test_user_service_quotes_paths_without_shell_or_credential_environment(self):
-        module=load('linux_service');value=module.definition(Path('/example/fish % path'),'/usr/bin/python3',Path('/example/user'))
-        self.assertIn('Type=exec',value);self.assertIn('%%',value);self.assertIn('UMask=0077',value)
+        module=load('linux_service');value=module.definition(Path('/example/fish % $ path'),'/usr/bin/python3',Path('/example/user'))
+        self.assertIn('Type=exec',value);self.assertIn('%%',value);self.assertIn('UMask=0077',value);self.assertIn('$$',value)
         self.assertNotIn('sudo',value);self.assertNotIn('/bin/sh -c',value);self.assertNotIn('TOKEN',value)
         self.assertIn('WantedBy=default.target',value)
         with self.assertRaises(ValueError):module.quote('/example/bad\nExecStart=/bad')
