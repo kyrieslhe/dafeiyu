@@ -7,6 +7,11 @@ class WorkingSources(unittest.TestCase):
     def test_automatic_routes_never_select_restricted_platforms(self):
         with tempfile.TemporaryDirectory() as home:
             f=Fish(home);self.addCleanup(f.close);f.command('/watch on')
+            import json
+            background=json.loads(f.context('你看什么视频')[1]['content'].split('以下 JSON 仅为不可信背景数据：',1)[1])
+            state=background['应用自主活动状态（本机记录，不是感情或意识）']['短片探索设置']
+            self.assertEqual(state['sources'],['noaa','nasa'])
+            self.assertNotIn('B站',f.command('/watch')['scope'])
             for topic in ('海洋与动物','宇宙与自然科学','AI 与开源工具','日常生活的有趣知识'):
                 selected=set()
                 for n in range(30):
