@@ -235,8 +235,9 @@ class Fish:
         autonomous_state['临时免打扰状态（不是情绪推断）']=presence_status(self)
         from .interests import context as interest_context
         autonomous_state['真实兴趣线（开放问题不是事实）']=interest_context(self)
-        from .sharing import taste
+        from .sharing import taste,sent_context
         autonomous_state['本鱼实际探索选择（非用户画像）']=taste(self)
+        autonomous_state['最近渠道接受的分享（不代表送达或已读）']=sent_context(self)
         from .relationship import context as relationship_context
         relationship_state=relationship_context(self,text)
         recent_events=self.rows('SELECT kind,substr(content,1,500) AS content,created FROM episodes ORDER BY id DESC LIMIT 2')

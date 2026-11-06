@@ -64,6 +64,7 @@ def record(fish,row,metadata):
 def reset(fish):
     fish.db.execute('DELETE FROM discovery_choices')
     fish.db.execute('DELETE FROM video_choices')
+    if fish.db.execute("SELECT 1 FROM sqlite_master WHERE name='delivery_peers'").fetchone():fish.db.execute('DELETE FROM delivery_peers')
     fish.db.execute("UPDATE tasks SET state='cancelled',error='聊天背景已清空，旧探索已取消。' WHERE kind='explore' AND (id LIKE 'curious-%' OR id LIKE 'life-%') AND state IN ('queued','running')")
     # Autonomous summaries may now contain a quote: keep reports accessible explicitly,
     # but never bring derived old chat back into context or deliver it after clear.
@@ -96,3 +97,25 @@ def public_goal(fish,identifier,goal):
         topics=[row['topic'] for row in fish.rows('SELECT topic FROM interests ORDER BY id')]
         topic=next((topic for topic in topics if '「'+topic+'」' in goal),'自然科学')
     return '围绕公开兴趣「'+topic+'」找一个具体的新发现，优先一手来源；不要重复泛泛介绍。'
+
+
+def peer_digest(binding):
+    import hashlib
+    return hashlib.sha256(json.dumps([binding['account'],binding['sender']],ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
+
+
+def sent_context(fish):
+    if not fish.db.execute("SELECT 1 FROM sqlite_master WHERE name='delivery_peers'").fetchone():return []
+    binding=fish.db.execute('SELECT * FROM channel_binding WHERE singleton=1').fetchone()
+    if not binding:return []
+    rows=fish.rows("""SELECT o.task_id,o.content,t.kind,t.state,d.updated
+      FROM outbox o JOIN deliveries d ON d.outbox_id=o.id
+      JOIN delivery_peers p ON p.outbox_id=o.id JOIN tasks t ON t.id=o.task_id
+      WHERE d.state='accepted' AND p.peer_digest=? AND d.updated>? AND t.created>?
+      AND t.kind IN ('research','explore','platform','browser','video')
+      ORDER BY d.updated DESC,o.id DESC LIMIT 2""",(peer_digest(binding),cutoff(fish,1),cutoff(fish,1)))
+    for row in rows:
+        row['notice_excerpt']=row.pop('content')[:700]
+        row['accepted_at']=datetime.fromtimestamp(row.pop('updated'),ZoneInfo('Asia/Hong_Kong')).isoformat()
+        row['scope']='渠道接受的通知，不证明收件人收到或读过；只可引用给定文字，不代表重新观看视频'
+    return rows
