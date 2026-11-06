@@ -37,7 +37,9 @@ def route(fish,text,messages,images=None,allow_actions=True):
         requested=('记住' in text if name=='remember' else '日记' in text or '记录' in text)
         if negative or not requested or not argument or argument not in text:
             return '这件事还没有写入长期记录。请明确用 /remember 内容 或 /diary 内容 保存你确认的原话。'
-    if name=='tasks':return json.dumps(fish.command('/tasks'),ensure_ascii=False,indent=2)
+    if name=='tasks':
+        from .relationship import task_reply
+        return task_reply(fish)
     if name=='browse':
         if not any(word in text for word in ('网页','浏览','网站','页面','https://')):
             return '还没有创建浏览任务；请说明要查看的网站或页面。'
