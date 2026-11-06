@@ -93,3 +93,39 @@ def store_video(home,items):
     directory=home/'media/video-inputs';directory.mkdir(mode=0o700,parents=True,exist_ok=True)
     target=directory/(uuid.uuid4().hex+suffix);target.write_bytes(data);target.chmod(0o600)
     return target
+
+
+def stored_image_paths(home,paths):
+    root=Path(home).resolve()/'media/conversation-inputs';result=[];total=0
+    if not isinstance(paths,list) or len(paths)>2:raise MediaError('一次最多处理两张图片。')
+    import re
+    for value in paths:
+        path=Path(value)
+        if not path.is_absolute() or path.resolve()!=path or path.parent!=root or root.resolve()!=root or not re.fullmatch('[0-9a-f]{32}[.](png|jpg)',path.name):raise MediaError('临时图片路径无效，请重新发送。')
+        try:
+            fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+            with os.fdopen(fd,'rb') as stream:
+                info=os.fstat(stream.fileno())
+                if not stat.S_ISREG(info.st_mode) or not 0<info.st_size<=8*1024*1024:raise MediaError('临时图片已失效或超限。')
+                data=stream.read(8*1024*1024+1)
+        except OSError:raise MediaError('临时图片已过期，请重新发送。') from None
+        total+=len(data)
+        if total>12*1024*1024:raise MediaError('图片总大小超过 12MB。')
+        image_suffix(data);result.append(str(path))
+    return result
+
+
+def store_images(home,items):
+    import shutil,uuid
+    root=Path(home).resolve()/'media/conversation-inputs';root.mkdir(parents=True,exist_ok=True,mode=0o700)
+    if sum(p.stat().st_size for p in root.iterdir() if p.is_file() and not p.is_symlink())>128*1024*1024:raise MediaError('待处理图片暂存较多，请稍后再发。')
+    if root.resolve()!=root:raise MediaError('临时图片目录无效。')
+    copied=[]
+    try:
+        with staged_images(home,items) as temporary:
+            for source in temporary:
+                target=root/(uuid.uuid4().hex+Path(source).suffix);shutil.copyfile(source,target);target.chmod(0o600);copied.append(str(target))
+        return copied
+    except BaseException:
+        for value in copied:Path(value).unlink(missing_ok=True)
+        raise

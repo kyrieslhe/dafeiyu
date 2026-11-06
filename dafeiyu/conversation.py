@@ -13,15 +13,18 @@ def initialize(fish):
     fish.db.execute('''CREATE TABLE IF NOT EXISTS conversation_inbox (
       id INTEGER PRIMARY KEY,inbound_id TEXT UNIQUE,account TEXT,sender TEXT,content TEXT,
       state TEXT,created REAL,claimed REAL,reply TEXT)''')
-    fish.db.commit()
+    with fish.db:
+        fish.db.execute("UPDATE settings SET value=value WHERE key='paused'")
+        if 'images' not in {row[1] for row in fish.db.execute('PRAGMA table_info(conversation_inbox)')}:fish.db.execute("ALTER TABLE conversation_inbox ADD COLUMN images TEXT DEFAULT '[]'")
 
 
-def enqueue(fish,key,account,sender,text):
+def enqueue(fish,key,account,sender,text,images=None):
     initialize(fish)
     with fish.db:
         from .presence import observe
         observe(fish,text)
         fish.db.execute("INSERT OR IGNORE INTO conversation_inbox(inbound_id,account,sender,content,state,created) VALUES (?,?,?,?,'queued',?)",(key,account,sender,text,fish.clock()))
+        if images:fish.db.execute('UPDATE conversation_inbox SET images=? WHERE inbound_id=?',(json.dumps(images),key))
         fish.db.execute("UPDATE inbound SET state='buffered' WHERE id=?",(key,))
     return ''
 
@@ -46,6 +49,7 @@ def bubbles(text,goal=''):
 
 def step(fish,runner=subprocess.run,sleep=time.sleep):
     initialize(fish);now=fish.clock()
+    cleanup_images(fish)
     with fish.db:
         fish.db.execute("UPDATE conversation_inbox SET state='unknown' WHERE state IN ('working','sending') AND claimed<?",(now-180,))
         fish.db.execute("UPDATE inbound_stats SET finished=?,outcome='interrupted' WHERE finished IS NULL AND id IN (SELECT inbound_id FROM conversation_inbox WHERE state='unknown')",(now,))
@@ -62,11 +66,15 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
         if now-rows[-1]['created']<gap and now-rows[0]['created']<8:return
         rows=[r for r in rows if r['account']==binding['account'] and r['sender']==binding['sender']]
         if not rows:return
-        chosen=[];size=0
+        latest_seen=fish.db.execute('SELECT coalesce(max(id),0) FROM conversation_inbox WHERE account=? AND sender=?',(binding['account'],binding['sender'])).fetchone()[0]
+        chosen=[];size=0;image_count=0;image_bytes=0
         for row in rows:
             if chosen and (chosen[0]['content'].startswith('/') or row['content'].startswith('/')):break
             if chosen and size+len(row['content'])+2>12000:break
-            chosen.append(row);size+=len(row['content'])+2
+            row_images=json.loads(row['images'] or '[]')
+            row_bytes=sum(Path(value).stat().st_size for value in row_images if Path(value).is_file())
+            if chosen and (image_count+len(row_images)>2 or image_bytes+row_bytes>12*1024*1024):break
+            chosen.append(row);size+=len(row['content'])+2;image_count+=len(row_images);image_bytes+=row_bytes
         ids=[r['id'] for r in chosen];marks=','.join('?' for _ in ids)
         changed=fish.db.execute("UPDATE conversation_inbox SET state='working',claimed=? WHERE state='queued' AND id IN ("+marks+')',[now]+ids).rowcount
         if changed!=len(ids):return
@@ -78,13 +86,29 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
     def current():
         active=fish.db.execute('SELECT * FROM channel_binding WHERE singleton=1').fetchone()
         existing=fish.db.execute("SELECT 1 FROM conversation_inbox WHERE id=? AND state IN ('working','sending')",(ids[0],)).fetchone()
-        newer=fish.db.execute("SELECT 1 FROM conversation_inbox WHERE id>? AND state IN ('queued','control') AND account=? AND sender=?",(ids[-1],binding['account'],binding['sender'])).fetchone()
+        newer=fish.db.execute("SELECT 1 FROM conversation_inbox WHERE id>? AND state IN ('queued','control') AND account=? AND sender=?",(latest_seen,binding['account'],binding['sender'])).fetchone()
         if not reset_command and generation(fish)!=started_generation:return False
         return existing and active and active['account']==binding['account'] and active['sender']==binding['sender'] and not newer
     previous_cancel=getattr(fish.model,'cancelled',None)
     if previous_cancel is not None:fish.model.cancelled=lambda:previous_cancel() or not current()
-    try:reply=fish.command('\n'.join(r['content'] for r in chosen))
-    except (ValueError,ModelError):reply='鱼脑袋这次没接上，暂时没能生成回复。你可以稍后再试。'
+    try:
+        text='\n'.join(row['content'] for row in chosen)
+        images=[value for row in chosen for value in json.loads(row['images'] or '[]')]
+        if not images and not text.startswith('/') and not re.search('换个话题|不用看图|别看图|算了|不看了',text):
+            reset=fish.db.execute("SELECT value FROM settings WHERE key='relationship_reset'").fetchone()
+            cutoff=max(now-300,float(reset[0]) if reset else 0)
+            prior=fish.db.execute("SELECT images,state,claimed FROM conversation_inbox WHERE id<? AND account=? AND sender=? AND created>? AND images!='[]' AND state IN ('superseded','accepted','interrupted') ORDER BY id DESC LIMIT 1",(ids[0],binding['account'],binding['sender'],cutoff)).fetchone()
+            if prior and ((prior['state']=='superseded' and now-prior['claimed']<15) or re.search('图|照片|旁边|那个|这张|那张|左边|右边|颜色|画面|上面|下面',text)):
+                rows_with_images=fish.rows("SELECT images FROM conversation_inbox WHERE claimed=? AND account=? AND sender=? AND images!='[]' ORDER BY id",(prior['claimed'],binding['account'],binding['sender']))
+                images=[value for row in rows_with_images for value in json.loads(row['images'])][:2]
+                with fish.db:fish.db.execute('UPDATE conversation_inbox SET images=? WHERE id=?',(json.dumps(images),ids[0]))
+        if images:
+            from .media import stored_image_paths
+            images=stored_image_paths(fish.home,images)
+            reply=fish.chat(text,images=images)
+        else:reply=fish.command(text)
+    except ValueError as error:reply=str(error)
+    except ModelError:reply='鱼脑袋这次没接上，暂时没能生成回复。你可以稍后再试。'
     except Exception:reply='本鱼这次处理失败了，请稍后再试。'
     finally:
         if previous_cancel is not None:fish.model.cancelled=previous_cancel
@@ -124,6 +148,26 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
             fish.db.execute("UPDATE inbound SET state='completed',reply=NULL WHERE id=?",(row['inbound_id'],))
             fish.db.execute("UPDATE inbound_stats SET finished=?,outcome=? WHERE id=?",(fish.clock(),state,row['inbound_id']))
     return state
+
+
+def purge_images(fish):
+    if not fish.db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone() or 'images' not in {row[1] for row in fish.db.execute('PRAGMA table_info(conversation_inbox)')}:return
+    rows=fish.rows("SELECT images FROM conversation_inbox WHERE state!='queued' AND images!='[]'")
+    queued={value for row in fish.rows("SELECT images FROM conversation_inbox WHERE state='queued'") for value in json.loads(row['images'] or '[]')}
+    for row in rows:
+        for value in json.loads(row['images'] or '[]'):
+            path=Path(value);root=fish.home/'media/conversation-inputs'
+            if value not in queued and path.parent==root and path.resolve()==path and re.fullmatch('[0-9a-f]{32}[.](png|jpg)',path.name):path.unlink(missing_ok=True)
+    fish.db.execute("UPDATE conversation_inbox SET images='[]' WHERE state!='queued'")
+
+
+def cleanup_images(fish):
+    root=fish.home/'media/conversation-inputs'
+    if not root.is_dir() or root.is_symlink():return
+    active={value for row in fish.rows("SELECT images FROM conversation_inbox WHERE state IN ('queued','working','sending')") for value in json.loads(row['images'] or '[]')}
+    for path in root.iterdir():
+        if path.is_symlink() or not path.is_file() or not re.fullmatch('[0-9a-f]{32}[.](png|jpg)',path.name):continue
+        if str(path) not in active and path.stat().st_mtime<fish.clock()-300:path.unlink(missing_ok=True)
 
 
 def main():

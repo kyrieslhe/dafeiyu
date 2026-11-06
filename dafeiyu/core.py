@@ -250,6 +250,7 @@ class Fish:
         if not text.strip() or len(text) > 12000:
             raise ValueError('消息须为 1–12000 字符。')
         from .relationship import generation
+        if callable(getattr(self.model,'cancelled',None)) and self.model.cancelled():raise ModelError('当前话轮已被补充或取消。')
         started_generation=generation(self)
         try:
             if hasattr(self.model,'plan'):
@@ -286,6 +287,8 @@ class Fish:
             self.db.execute('DELETE FROM messages')
             from .relationship import reset
             reset(self)
+            from .conversation import purge_images
+            purge_images(self)
             if self.db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone():self.db.execute("UPDATE conversation_inbox SET content='',reply=NULL WHERE state!='queued'")
             self.db.execute('DELETE FROM diary')
             self.db.execute('DELETE FROM episodes')
@@ -592,6 +595,8 @@ class Fish:
                 self.db.execute('DELETE FROM messages')
                 from .relationship import reset
                 reset(self)
+                from .conversation import purge_images
+                purge_images(self)
                 if self.db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone():self.db.execute("UPDATE conversation_inbox SET content='',reply=NULL WHERE state!='queued'")
                 self.db.execute("DELETE FROM episodes WHERE kind='conversation'")
             return '聊天上下文已清空；明确记忆仍保留。'
