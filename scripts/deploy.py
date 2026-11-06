@@ -30,6 +30,10 @@ def activate(commit):
             busy=db.execute("SELECT count(*) FROM tasks WHERE state IN ('running','applying')").fetchone()[0]
             if db.execute("SELECT 1 FROM sqlite_master WHERE name='inbound'").fetchone():busy+=db.execute("SELECT count(*) FROM inbound WHERE state='running'").fetchone()[0]
             if db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone():busy+=db.execute("SELECT count(*) FROM conversation_inbox WHERE state IN ('working','sending')").fetchone()[0]
+            if db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone() and 'images' in {row[1] for row in db.execute('PRAGMA table_info(conversation_inbox)')}:
+                pending=db.execute("SELECT count(*) FROM conversation_inbox WHERE state='queued' AND images IS NOT NULL AND images!='[]'").fetchone()[0]
+                capability=release/'dafeiyu/capabilities.json'
+                if pending and (not capability.exists() or json.loads(capability.read_text()).get('conversation_images') is not True):raise ValueError('有图片话轮排队，目标版本不支持，未切换。')
             if busy:raise ValueError('有聊天或任务运行，未切换，请稍后重试。')
             config_path=ROOT/'var/gateway/openclaw.json';config=json.loads(config_path.read_text())
             receipt=ROOT/'var/active-release.json';old=json.loads(receipt.read_text()) if receipt.exists() else None

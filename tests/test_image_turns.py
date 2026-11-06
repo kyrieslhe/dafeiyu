@@ -51,3 +51,17 @@ class ImageTurns(unittest.TestCase):
         self.now+=2
         self.assertEqual(step(self.f,self.send),'accepted')
         self.now+=2;self.assertEqual(step(self.f,self.send),'accepted');self.assertEqual(len(self.model.calls),2)
+
+    def test_deployment_refuses_older_code_while_image_turn_is_pending(self):
+        import importlib.util,sqlite3
+        from unittest.mock import Mock
+        root_code=Path(__file__).resolve().parent.parent
+        spec=importlib.util.spec_from_file_location('deploy_image_fixture',root_code/'scripts/deploy.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);(root/'var').mkdir();release=root/'old-release';release.mkdir()
+            db=sqlite3.connect(root/'var/fish.sqlite');db.execute('CREATE TABLE tasks(state TEXT)');db.execute('CREATE TABLE conversation_inbox(state TEXT,images TEXT)')
+            db.execute('INSERT INTO conversation_inbox VALUES (?,?)',('queued','["private-copy.png"]'));db.commit();db.close()
+            service=Mock()
+            with patch.object(module,'ROOT',root),patch.object(module,'verify',return_value=release),patch.object(module,'module',return_value=service):
+                with self.assertRaisesRegex(ValueError,'图片话轮'):module.activate('fixture')
+            service.control.assert_not_called()
