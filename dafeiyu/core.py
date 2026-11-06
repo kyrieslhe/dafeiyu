@@ -200,6 +200,8 @@ class Fish:
         initialize_interests(self)
         from .feeds import initialize as initialize_feeds
         initialize_feeds(self)
+        from .platforms import initialize as initialize_platforms
+        initialize_platforms(self)
         life.initialize(self)
         curiosity.initialize(self)
 
@@ -292,7 +294,7 @@ class Fish:
         return '已删除，并清空聊天上下文和共同日记，防止旧内容再次被带入。备份需单独清理。'
 
     def enqueue(self, kind, goal, due=None):
-        if kind not in ('reminder', 'draft', 'daily', 'research', 'code', 'reflect', 'explore', 'speech', 'browser', 'video') or not goal.strip() or len(goal) > 6000:
+        if kind not in ('reminder', 'draft', 'daily', 'research', 'code', 'reflect', 'explore', 'speech', 'browser', 'video','platform') or not goal.strip() or len(goal) > 6000:
             raise ValueError('无效任务类型或内容（1–6000 字符）。')
         due = self.clock() if due is None else due
         if due < self.clock()-60:
@@ -358,11 +360,20 @@ class Fish:
                 from .research import research
                 if row['kind']=='explore':
                     from .feeds import for_topic
-                    result,metadata=research(self.model,row['goal'],companion=True,feed_urls=for_topic(self,row['id'],row['goal']),seen_urls={r['url'] for r in self.rows('SELECT url FROM feed_reads')},discover=row['id'].startswith(('curious-','life-')))
+                    from .platforms import choose,read as read_platform
+                    site=choose(self,row['id']) if row['id'].startswith(('curious-','life-')) else None
+                    if site:
+                        try:result,metadata=read_platform(self,site,row['goal'],row['id'])
+                        except (ValueError,ModelError):site=None
+                    if not site:result,metadata=research(self.model,row['goal'],companion=True,feed_urls=for_topic(self,row['id'],row['goal']),seen_urls={r['url'] for r in self.rows('SELECT url FROM feed_reads')},discover=row['id'].startswith(('curious-','life-')))
                 else:result,metadata=research(self.model,row['goal'],companion=not any(term in row['goal'] for term in ('正式报告','详细报告','研究报告','不要卖萌','学术')))
             elif row['kind'] == 'browser':
                 from .browser import browse
                 result, metadata = browse(self.model, row['goal'], self.home, row['id'])
+            elif row['kind']=='platform':
+                from .platforms import read as read_platform
+                site,_,goal=row['goal'].partition(' ')
+                result,metadata=read_platform(self,site,goal,row['id'])
             elif row['kind'] == 'video':
                 from .video import analyze
                 result,metadata=analyze(self.model,json.loads(row['goal']),self.home,row['id'])
@@ -398,7 +409,7 @@ class Fish:
                 reports = self.home / 'reports'
                 reports.mkdir(exist_ok=True)
                 (reports / (row['id']+'.md')).write_text(result)
-                if row['kind'] in ('research','explore','browser','video'):
+                if row['kind'] in ('research','explore','browser','video','platform'):
                     (reports / (row['id']+'.sources.json')).write_text(json.dumps(metadata,ensure_ascii=False,indent=2))
             with self.db:
                 changed = self.db.execute("UPDATE tasks SET state=?,result=?,lease=NULL WHERE id=? AND state='running'", ('waiting_approval' if waiting else 'succeeded', result, row['id'])).rowcount
@@ -444,6 +455,12 @@ class Fish:
             from .memory import reject_secret
             reject_secret(argument)
             return '语音任务已入队：'+self.enqueue('speech',argument)
+        if command=='/platform':
+            site,_,goal=argument.partition(' ')
+            if site not in ('bilibili','douyin') or not goal:raise ValueError('用法：/platform bilibili或douyin 主题或公开页面URL')
+            from .memory import reject_secret
+            reject_secret(goal)
+            return '本鱼去看看公开文案，不登录也不假装看完视频。任务：'+self.enqueue('platform',site+' '+goal)
         if command == '/browse':
             from .memory import reject_secret
             reject_secret(argument)

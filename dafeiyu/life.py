@@ -59,6 +59,9 @@ def command(fish,name,argument):
     if name=='/unpin':
         with fish.db:fish.db.execute('UPDATE memory_meta SET importance=1 WHERE memory_id=?',(int(argument),))
         return '已取消常驻。'
+    if name=='/platforms':
+        from .platforms import command as platform_command
+        return platform_command(fish,argument)
     if name=='/feeds':
         from .feeds import command as feed_command
         return feed_command(fish,argument)
@@ -129,7 +132,7 @@ def command(fish,name,argument):
     return None
 
 
-COMMANDS={'/feeds','/quiet','/threads','/recall','/pin','/unpin','/timeline','/reflect','/reflections','/accept','/dismiss','/interest','/uninterest','/life','/explore','/discoveries'}
+COMMANDS={'/platforms','/feeds','/quiet','/threads','/recall','/pin','/unpin','/timeline','/reflect','/reflections','/accept','/dismiss','/interest','/uninterest','/life','/explore','/discoveries'}
 
 
 def related(fish,query,budget=1800):
