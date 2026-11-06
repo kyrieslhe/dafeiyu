@@ -54,4 +54,4 @@ def command(fish,argument):
             fish.db.execute("INSERT OR REPLACE INTO settings VALUES ('watching',?)",(argument,))
             if argument=='off':fish.db.execute("INSERT OR IGNORE INTO curiosity_suppressed SELECT o.id,'watch-off',? FROM outbox o JOIN video_runs v ON v.task_id=o.task_id WHERE o.seen=0 AND (o.task_id LIKE 'curious-%' OR o.task_id LIKE 'life-%')",(fish.clock(),))
     elif argument:raise ValueError('用法：/watch on、/watch off 或 /watch')
-    return {'enabled':enabled(fish),'scope':'匿名公开短片≤120秒/20MB，四帧采样及最多60秒本机转写，不等于完整观看；B站、NASA 和 NOAA 官方短片；抖音仍受匿名访问限制。','choices':fish.rows('SELECT url,title,scope,recommend,reason,created FROM video_choices ORDER BY created DESC LIMIT 10'),'sharing':'仅推荐且通过已有去重/每日上限/免打扰/额度保护的自动发现才进入投递。'}
+    return {'enabled':enabled(fish),'scope':'匿名公开短片≤120秒/20MB，四帧采样及最多60秒本机转写，不等于完整观看；自主来源仅 NOAA 海洋动物与 NASA 科学短片。','choices':fish.rows('SELECT url,title,scope,recommend,reason,created FROM video_choices ORDER BY created DESC LIMIT 10'),'sharing':'仅推荐且通过已有去重/每日上限/免打扰/额度保护的自动发现才进入投递。'}

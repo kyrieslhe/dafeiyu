@@ -236,7 +236,7 @@ class Fish:
         from .presence import status as presence_status
         autonomous_state['临时免打扰状态（不是情绪推断）']=presence_status(self)
         from .watching import enabled as watching_enabled
-        autonomous_state['短片探索设置']={'enabled':watching_enabled(self),'scope':'匿名短片抽样，不等于完整观看','sources':['bilibili','nasa','noaa'],'douyin':'text_only'}
+        autonomous_state['短片探索设置']={'enabled':watching_enabled(self),'scope':'匿名短片抽样，不等于完整观看','sources':['noaa','nasa'],'douyin':'text_only'}
         from .interests import context as interest_context
         autonomous_state['真实兴趣线（开放问题不是事实）']=interest_context(self)
         from .sharing import taste,sent_context
