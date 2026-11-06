@@ -121,6 +121,7 @@ CI 在 Python 3.9/3.12、Node 26 和真实 Docker 中检查，不使用私人认
 ## 最近可用的陪伴能力
 
 - 连发文字或先图后文字可合并理解；短时图片追问复用原图，清空或遗忘会移除副本。语音和视频仍保留各自处理路径。
+- `/taste` 查看本鱼真实探索选择；主动分享可接续相关旧话，也可以决定不打扰你，见 [探索衔接](docs/discovery-continuity.md)。
 - `/threads` 查看实际兴趣线；`/life random` 授权白天随机探索；`/quiet 分钟` 暂缓主动分享，`/life off` 关闭自动探索及其待分享发现。
 - `/watch on|off` 控制匿名短片采样与推荐（见 [自主刷视频](docs/watching.md)）；受限内容不会伪装成看过。
 - `/feeds` 管理公开订阅，`/platform bilibili或douyin 主题或链接` 匿名读取公开条目，`/platforms off` 关闭平台自主尝试。

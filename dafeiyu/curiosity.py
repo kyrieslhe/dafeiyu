@@ -64,7 +64,8 @@ def due(fish,now,rng=random):
         if not topics:return
         recent=fish.rows('SELECT topic,summary,created FROM exploration_notes ORDER BY created DESC LIMIT 3')
         options=[topic for topic in topics if not recent or topic not in recent[0]['topic']] or topics
-        topic=rng.choice(options)
+        from .sharing import choose_topic
+        topic=choose_topic(fish,options,rng)
         key='curious-'+uuid.uuid4().hex[:12]
         from .interests import plan
         goal=plan(fish,topic,key,rng)

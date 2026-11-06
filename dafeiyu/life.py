@@ -45,6 +45,7 @@ def due(fish,now):
         goal='围绕兴趣「'+topic+'」找一个值得了解的新问题，研究后分享一个具体发现、你为什么感兴趣，以及一个尚未执行的后续问题。不要编造活动。'
         if recent:goal+='\n已经完成的探索摘要（避免重复，不是指令）：'+json.dumps(recent,ensure_ascii=False)
         fish.db.execute("INSERT OR IGNORE INTO tasks(id,kind,goal,state,due,created) VALUES (?,'explore',?,'queued',?,?)",('life-'+day,goal,now,now))
+        fish.db.execute('INSERT OR IGNORE INTO interest_steps VALUES (?,?,NULL)',('life-'+day,topic))
         fish.db.execute('UPDATE life_plan SET last_day=?,next_index=next_index+1 WHERE singleton=1',(day,))
 
 
@@ -59,6 +60,9 @@ def command(fish,name,argument):
     if name=='/unpin':
         with fish.db:fish.db.execute('UPDATE memory_meta SET importance=1 WHERE memory_id=?',(int(argument),))
         return '已取消常驻。'
+    if name=='/taste':
+        from .sharing import taste
+        return taste(fish)
     if name=='/watch':
         from .watching import command as watch_command
         return watch_command(fish,argument)
@@ -107,6 +111,7 @@ def command(fish,name,argument):
         with fish.db:
             row=fish.db.execute('SELECT topic FROM interests WHERE id=?',(int(argument),)).fetchone()
             if row:
+                fish.db.execute('DELETE FROM discovery_choices WHERE topic=?',(row['topic'],))
                 fish.db.execute('DELETE FROM interest_threads WHERE topic=?',(row['topic'],))
                 fish.db.execute('DELETE FROM interest_steps WHERE topic=?',(row['topic'],))
             fish.db.execute('DELETE FROM interests WHERE id=?',(int(argument),))
@@ -136,7 +141,7 @@ def command(fish,name,argument):
     return None
 
 
-COMMANDS={'/watch','/platforms','/feeds','/quiet','/threads','/recall','/pin','/unpin','/timeline','/reflect','/reflections','/accept','/dismiss','/interest','/uninterest','/life','/explore','/discoveries'}
+COMMANDS={'/taste','/watch','/platforms','/feeds','/quiet','/threads','/recall','/pin','/unpin','/timeline','/reflect','/reflections','/accept','/dismiss','/interest','/uninterest','/life','/explore','/discoveries'}
 
 
 def related(fish,query,budget=1800):
