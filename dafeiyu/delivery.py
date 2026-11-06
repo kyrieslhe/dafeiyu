@@ -14,14 +14,14 @@ def deliver(fish, runner=subprocess.run):
         fish.db.execute("UPDATE deliveries SET state='delivery_unknown' WHERE state='sending' AND updated<?",(now-90,))
         if fish.db.execute("SELECT value FROM settings WHERE key='paused'").fetchone()[0]=='1': return None
         from .presence import status as presence_status
-        if fish.db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone() and fish.db.execute("SELECT 1 FROM conversation_inbox WHERE state IN ('queued','working','sending')").fetchone():return None
         binding=fish.db.execute('SELECT * FROM channel_binding WHERE singleton=1').fetchone()
         if not binding: return None
         row=fish.db.execute('''SELECT o.*,t.kind FROM outbox o JOIN tasks t ON t.id=o.task_id
           LEFT JOIN deliveries d ON d.outbox_id=o.id WHERE o.seen=0 AND t.state IN ('succeeded','waiting_approval','failed')
           AND o.id NOT IN (SELECT outbox_id FROM curiosity_suppressed)
-          AND (d.outbox_id IS NULL OR (d.state='waiting_context' AND d.updated<?)) ORDER BY o.id LIMIT 1''',(binding['last_seen'],)).fetchone()
+          AND (d.outbox_id IS NULL OR (d.state='waiting_context' AND d.updated<?)) ORDER BY CASE WHEN t.kind='reminder' THEN 0 ELSE 1 END,o.id LIMIT 1''',(binding['last_seen'],)).fetchone()
         if not row:return None
+        if row['kind']!='reminder' and fish.db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone() and fish.db.execute("SELECT 1 FROM conversation_inbox WHERE state IN ('queued','working','sending')").fetchone():return None
         if row['kind']!='reminder' and presence_status(fish)['mode']!='available':return None
         if row['kind'] in ('research','explore') and fish.db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone() and fish.db.execute("SELECT 1 FROM conversation_inbox WHERE state IN ('accepted','interrupted') AND claimed>?",(now-120,)).fetchone():return None
         hour=datetime.fromtimestamp(now,ZoneInfo('Asia/Hong_Kong')).hour
@@ -32,6 +32,8 @@ def deliver(fish, runner=subprocess.run):
         if not claimed:
             claimed=fish.db.execute("UPDATE deliveries SET state='sending',updated=? WHERE outbox_id=? AND state='waiting_context'",(now,row['id'])).rowcount
         if not claimed:return None
+        from .sharing import peer_digest
+        fish.db.execute('INSERT OR REPLACE INTO delivery_peers VALUES (?,?)',(row['id'],peer_digest(binding)))
     script=Path(__file__).resolve().parent.parent/'scripts/openclaw'
     message=(('🐳 任务 '+row['task_id']+'\n') if row['kind'] not in ('explore','research','platform') else '')+row['content'][:2500]
     if len(row['content'])>2500:message+='\n完整成果：大肥鱼 /result '+row['task_id']
@@ -59,5 +61,5 @@ def deliver(fish, runner=subprocess.run):
             else:error='发送失败或结果不确定；不自动重复发送。'
     except (OSError,subprocess.TimeoutExpired):error='发送超时或进程失败，结果不确定；不自动重复发送。'
     with fish.db:
-        fish.db.execute('UPDATE deliveries SET state=?,error=?,updated=? WHERE outbox_id=?',(state,error,now,row['id']))
+        fish.db.execute('UPDATE deliveries SET state=?,error=?,updated=? WHERE outbox_id=?',(state,error,fish.clock(),row['id']))
     return state

@@ -15,6 +15,7 @@ def tables(fish):
     CREATE TABLE IF NOT EXISTS inbound (id TEXT PRIMARY KEY,state TEXT,reply TEXT,created REAL);
     CREATE TABLE IF NOT EXISTS inbound_stats (id TEXT PRIMARY KEY,received REAL,finished REAL,outcome TEXT,media_count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS deliveries (outbox_id INTEGER PRIMARY KEY,state TEXT,error TEXT,updated REAL);
+    CREATE TABLE IF NOT EXISTS delivery_peers (outbox_id INTEGER PRIMARY KEY,peer_digest TEXT);
     ''')
     with fish.db:
         fish.db.execute('DELETE FROM inbound_stats WHERE received<?',(fish.clock()-30*86400,))
