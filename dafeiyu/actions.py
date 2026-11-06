@@ -54,4 +54,7 @@ def route(fish,text,messages,images=None,allow_actions=True):
         return '提醒已创建：'+identifier+'，时间 '+when+'。如需取消：/cancel '+identifier
     commands={'research':'/research','code':'/code','recall':'/recall','remember':'/remember','daily':'/daily','diary':'/diary'}
     result=fish.command(commands[name]+(' '+argument if argument else ''))
+    if name=='research':
+        identifier=result.split('：',1)[-1].strip()
+        return '好耶，本鱼去查查这件事，查到后用自己的话讲给你听。还没查完哦。🐳\n任务已排好；想看进度可以说「查看任务」，编号 '+identifier
     return result if isinstance(result,str) else json.dumps(result,ensure_ascii=False,indent=2)

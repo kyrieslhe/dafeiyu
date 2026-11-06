@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from unittest.mock import patch
 from dafeiyu.core import Fish,ModelError
 
 
@@ -22,8 +23,23 @@ class ActionTests(unittest.TestCase):
     def test_natural_research_creates_real_task_not_fake_completion(self):
         self.plan('research','Python 官方版本',reply='我已经查好了')
         result=self.fish.chat('能去核对一下 Python 当前的版本吗？')
-        self.assertIn('研究任务已入队',result);self.assertNotIn('已经查好',result)
+        self.assertIn('本鱼去查查',result);self.assertNotIn('已经查好',result)
         self.assertEqual(self.fish.command('/tasks')[0]['state'],'queued')
+    def test_research_share_preserves_full_evidence_without_dumping_it(self):
+        self.plan('research','公开资料问题',reply='已经查好了')
+        reply=self.fish.chat('帮我查一下公开资料')
+        identifier=self.fish.command('/tasks')[0]['id']
+        self.assertIn(identifier,reply)
+        report='本鱼查到了一个有趣的事实。[来源](https://example.org)\n\n### 抓取记录\nSHA256 `fixture-hash`'
+        with patch('dafeiyu.research.research',return_value=(report,{'sources':[]})) as research:
+            self.fish.tick()
+        self.assertTrue(research.call_args.kwargs['companion'])
+        share=self.fish.db.execute('SELECT content FROM outbox WHERE task_id=?',(identifier,)).fetchone()[0]
+        self.assertIn('https://example.org',share)
+        self.assertNotIn('fixture-hash',share)
+        self.assertIn('/result '+identifier,share)
+        self.assertEqual(self.fish.db.execute('SELECT result FROM tasks WHERE id=?',(identifier,)).fetchone()[0],report)
+
     def test_model_cannot_apply_or_enable_autonomy(self):
         for action in ['approve','life','shell','delete','send_message']:
             self.plan(action)
