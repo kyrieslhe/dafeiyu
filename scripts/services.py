@@ -48,7 +48,10 @@ def control(args):
                 if active(entry):(os.kill if entry.get('adopted') else os.killpg)(entry['pid'],signal.SIGKILL)
         STATE.unlink(missing_ok=True);records={}
     if args.action in ('start','restart'):
-        commands={'gateway':[str(ROOT/'scripts/openclaw'),'gateway','run'],
+        sys.path.insert(0,str(ROOT))
+        from dafeiyu.deployment import selected
+        code=selected(ROOT)
+        commands={'gateway':[str(code/'scripts/openclaw'),'gateway','run'],
                   'worker':[sys.executable,'-m','dafeiyu','--home',str(ROOT/'var'),'worker','--deliver']}
         for name,command in commands.items():
             if name=='gateway' and name not in records:
@@ -56,13 +59,13 @@ def control(args):
                 if found.stdout.strip():
                     pid=int(found.stdout.strip().splitlines()[0])
                     cwd=subprocess.run(['lsof','-a','-p',str(pid),'-d','cwd','-Fn'],capture_output=True,text=True).stdout
-                    if '\nn'+str(ROOT)+'\n' not in cwd:raise SystemExit('18791 端口被其他程序占用，未触碰该程序。')
+                    if not any('\nn'+str(path)+'\n' in cwd for path in (ROOT,code)):raise SystemExit('18791 端口被其他程序占用，未触碰该程序。')
                     records[name]={'pid':pid,'stamp':stamp(pid),'adopted':True}
             if name in records and active(records[name]):continue
             env=dict(os.environ)
             env['PATH']='/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS:'+env.get('PATH','')
             with open(ROOT/'var'/('service-'+name+'.log'),'ab') as log:
-                process=subprocess.Popen(command,cwd=ROOT,env=env,stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)
+                process=subprocess.Popen(command,cwd=code,env=env,stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)
             time.sleep(.2)
             records[name]={'pid':process.pid,'stamp':stamp(process.pid)}
         STATE.write_text(json.dumps(records));os.chmod(STATE,0o600)
