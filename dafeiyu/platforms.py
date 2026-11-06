@@ -1,4 +1,4 @@
-"""Anonymous, read-only Bilibili/Douyin entries. Never opens account sessions or posts."""
+"""Anonymous, read-only Bilibili/Douyin/NASA entries. Never opens account sessions or posts."""
 from datetime import datetime,timezone
 import hashlib
 import json
@@ -8,7 +8,7 @@ import shutil
 from urllib.parse import urlsplit,urlencode
 from .core import ModelError
 
-SITES={'bilibili':('B站','www.bilibili.com'),'douyin':('抖音','www.douyin.com')}
+SITES={'bilibili':('B站','www.bilibili.com'),'douyin':('抖音','www.douyin.com'),'nasa':('NASA','images.nasa.gov')}
 
 
 def initialize(fish):
@@ -16,7 +16,10 @@ def initialize(fish):
 
 
 def canonical(site,url):
-    if site not in SITES:raise ValueError('仅支持 bilibili 或 douyin。')
+    if site=='nasa':
+        from .nasa_video import canonical as nasa_page
+        return nasa_page(url)
+    if site not in SITES:raise ValueError('仅支持 bilibili、douyin 或 nasa。')
     p=urlsplit(url)
     allowed={SITES[site][1]} if site=='bilibili' else {'www.douyin.com','jingxuan.douyin.com'}
     if p.scheme!='https' or p.hostname not in allowed or p.username or p.password or p.port not in (None,443):raise ValueError('只读对应平台公开视频页面。')
@@ -59,7 +62,10 @@ def page_source(site,url,home,identifier,cancelled=lambda:False):
 
 
 def read(fish,site,goal,identifier):
-    if site not in SITES:raise ValueError('仅支持 bilibili 或 douyin。')
+    if site=='nasa':
+        from .nasa_video import read as read_nasa
+        return read_nasa(fish,goal,identifier)
+    if site not in SITES:raise ValueError('仅支持 bilibili、douyin 或 nasa。')
     urls=re.findall(r'https://[^\s<>\]\)"\u3002]+',goal)
     def valid_urls(values):
         result=[]
@@ -114,10 +120,16 @@ def choose(fish,identifier):
     # Watch mode favors Bilibili; other public interests still get exploration turns.
     number=sum(identifier.encode())
     from .watching import enabled
-    if enabled(fish) and number%2==0:site='bilibili'
+    from .nasa_video import keyword
+    from .sharing import public_goal
+    science=enabled(fish) and keyword(public_goal(fish,identifier,''),identifier)
+    if enabled(fish) and number%2==0:site='nasa' if science and number%4==0 else 'bilibili'
     elif number%3:return None
     else:site=('bilibili','douyin')[(number//3)%2]
-    if fish.db.execute("SELECT 1 FROM platform_visits WHERE site=? AND state IN ('unavailable','no_public_entry','sample_unavailable') AND created>?",(site,fish.clock()-6*3600)).fetchone():return None
+    def cooling(candidate):return fish.db.execute("SELECT 1 FROM platform_visits WHERE site=? AND state IN ('unavailable','no_public_entry','sample_unavailable') AND created>?",(candidate,fish.clock()-6*3600)).fetchone()
+    if cooling(site):
+        if site=='bilibili' and science and not cooling('nasa'):site='nasa'
+        else:return None
     return site
 
 

@@ -12,9 +12,10 @@ from .core import ModelError
 MAX_BYTES=20*1024*1024
 
 
-def cdn_url(url):
+def cdn_url(url,source='bilibili'):
     p=urlsplit(url)
-    if p.scheme!='https' or not p.hostname or not p.hostname.endswith('.bilivideo.com') or p.username or p.password or p.port not in (None,443):raise ModelError('播放资源不属于允许的公开 HTTPS CDN。')
+    allowed=(source=='bilibili' and p.hostname and p.hostname.endswith('.bilivideo.com')) or (source=='nasa' and p.hostname=='images-assets.nasa.gov' and p.path.startswith('/video/') and p.path.endswith('.mp4'))
+    if p.scheme!='https' or not allowed or p.username or p.password or p.port not in (None,443):raise ModelError('播放资源不属于允许的公开 HTTPS CDN。')
     return url
 
 
@@ -48,18 +49,23 @@ def resolve(page):
     return {'page':page,'title':str(data.get('title',''))[:300],'description':str(data.get('desc',''))[:1500], 'duration':duration,'size':size,'media_url':media}
 
 
-def _download(url,home,name,expected,page):
+def _download(url,home,name,expected,page,source='bilibili'):
     from .research import target,PinnedHTTPS
     from .platforms import canonical
-    page=canonical('bilibili',page)
-    if not re.fullmatch('[0-9a-f]{32}[.]mp4',name) or type(expected) is not int or not 0<expected<=MAX_BYTES:raise ModelError('下载参数无效。')
+    if source=='nasa':
+        from .nasa_video import canonical as nasa_page
+        page=nasa_page(page)
+    else:page=canonical('bilibili',page)
+    if source=='nasa' and expected is None:bounded_only=True
+    else:bounded_only=False
+    if not re.fullmatch('[0-9a-f]{32}[.]mp4',name) or (not bounded_only and (type(expected) is not int or not 0<expected<=MAX_BYTES)):raise ModelError('下载参数无效。')
     root=Path(home).resolve()/'media/video-inputs';root.mkdir(parents=True,exist_ok=True,mode=0o700)
     if root.resolve()!=root:raise ModelError('媒体目录无效。')
     path=root/name
     if path.exists() or path.is_symlink():raise ModelError('不覆盖已有媒体。')
     try:
         for _ in range(3):
-            parsed,address=target(cdn_url(url));connection=PinnedHTTPS(parsed.hostname,address)
+            parsed,address=target(cdn_url(url,source));connection=PinnedHTTPS(parsed.hostname,address)
             try:
                 request=parsed.path or '/'
                 if parsed.query:request+='?'+parsed.query
@@ -69,6 +75,9 @@ def _download(url,home,name,expected,page):
                 if response.status!=200:raise ModelError('播放资源拒绝匿名读取。')
                 if response.getheader('Content-Encoding','identity').lower() not in ('','identity'):raise ModelError('播放资源编码不支持。')
                 declared=response.getheader('Content-Length')
+                if bounded_only:
+                    if not declared or not declared.isdigit() or not 0<int(declared)<=MAX_BYTES:raise ModelError('官方短片缺少受限大小信息或超过20MB。')
+                    expected=int(declared);bounded_only=False
                 if declared and int(declared)!=expected:raise ModelError('播放资源大小与公开元数据不一致。')
                 import os
                 fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600);total=0;digest=hashlib.sha256()
@@ -97,7 +106,7 @@ def download(info,home,cancelled=lambda:False):
     process=None;ok=False
     try:
         process=subprocess.Popen(command,cwd=Path(__file__).resolve().parent.parent,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True,start_new_session=True)
-        payload=json.dumps({'url':info['media_url'],'home':str(Path(home).resolve()),'name':name,'expected':info['size'],'page':info['page']})
+        payload=json.dumps({'url':info['media_url'],'home':str(Path(home).resolve()),'name':name,'expected':info['size'],'page':info['page'],'source':info.get('source','bilibili')})
         start=time.monotonic()
         try:stdout,_=process.communicate(payload,timeout=.25)
         except subprocess.TimeoutExpired:
@@ -106,7 +115,7 @@ def download(info,home,cancelled=lambda:False):
                 try:stdout,_=process.communicate(timeout=.25);break
                 except subprocess.TimeoutExpired:continue
         result=json.loads(stdout)
-        if process.returncode or result.get('bytes')!=info['size']:raise ModelError('未能完成受限公开视频下载。')
+        if process.returncode or type(result.get('bytes')) is not int or not 0<result['bytes']<=MAX_BYTES or (info['size'] is not None and result['bytes']!=info['size']) or not re.fullmatch('[0-9a-f]{64}',result.get('sha256','')):raise ModelError('未能完成受限公开视频下载。')
         ok=True;return path,result
     except (OSError,ValueError):raise ModelError('公开短片下载失败。') from None
     finally:
@@ -120,5 +129,5 @@ def download(info,home,cancelled=lambda:False):
 if __name__=='__main__':
     try:
         value=json.loads(sys.stdin.read(12000))
-        print(json.dumps(_download(value['url'],value['home'],value['name'],value['expected'],value['page'])))
+        print(json.dumps(_download(value['url'],value['home'],value['name'],value['expected'],value['page'],value.get('source','bilibili'))))
     except Exception:print(json.dumps({'error':'公开短片不可用或超过限制。'}));raise SystemExit(1)

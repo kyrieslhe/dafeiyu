@@ -445,7 +445,7 @@ class Fish:
                     if row['kind']=='research':
                         share=result.split('\n\n### 抓取记录')[0].strip()[:1800]+'\n\n完整资料：大肥鱼 /result '+row['id']
                     if row['kind']=='explore':
-                        share=result.split('\n\n### 抓取记录')[0].strip()[:1800]
+                        share=(metadata.get('share') or result.split('\n\n### 抓取记录')[0].strip())[:1800]
                         from .interests import complete as complete_interest
                         complete_interest(self,row['id'],result)
                         from .sharing import record as record_choice
@@ -484,10 +484,10 @@ class Fish:
             return '语音任务已入队：'+self.enqueue('speech',argument)
         if command=='/platform':
             site,_,goal=argument.partition(' ')
-            if site not in ('bilibili','douyin') or not goal:raise ValueError('用法：/platform bilibili或douyin 主题或公开页面URL')
+            if site not in ('bilibili','douyin','nasa') or not goal:raise ValueError('用法：/platform bilibili、douyin或nasa 主题或公开页面URL')
             from .memory import reject_secret
             reject_secret(goal)
-            return '本鱼去看看公开文案，不登录也不假装看完视频。任务：'+self.enqueue('platform',site+' '+goal)
+            return '本鱼去看看公开内容，短片只采样，不登录也不假装完整看过。任务：'+self.enqueue('platform',site+' '+goal)
         if command == '/browse':
             from .memory import reject_secret
             reject_secret(argument)
