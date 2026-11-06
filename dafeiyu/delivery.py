@@ -13,6 +13,7 @@ def deliver(fish, runner=subprocess.run):
     with fish.db:
         fish.db.execute("UPDATE deliveries SET state='delivery_unknown' WHERE state='sending' AND updated<?",(now-90,))
         if fish.db.execute("SELECT value FROM settings WHERE key='paused'").fetchone()[0]=='1': return None
+        from .presence import status as presence_status
         if fish.db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone() and fish.db.execute("SELECT 1 FROM conversation_inbox WHERE state IN ('queued','working','sending')").fetchone():return None
         binding=fish.db.execute('SELECT * FROM channel_binding WHERE singleton=1').fetchone()
         if not binding: return None
@@ -21,6 +22,8 @@ def deliver(fish, runner=subprocess.run):
           AND o.id NOT IN (SELECT outbox_id FROM curiosity_suppressed)
           AND (d.outbox_id IS NULL OR (d.state='waiting_context' AND d.updated<?)) ORDER BY o.id LIMIT 1''',(binding['last_seen'],)).fetchone()
         if not row:return None
+        if row['kind']!='reminder' and presence_status(fish)['mode']!='available':return None
+        if row['kind'] in ('research','explore') and fish.db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone() and fish.db.execute("SELECT 1 FROM conversation_inbox WHERE state IN ('accepted','interrupted') AND claimed>?",(now-120,)).fetchone():return None
         hour=datetime.fromtimestamp(now,ZoneInfo('Asia/Hong_Kong')).hour
         if row['kind']!='reminder' and (hour>=23 or hour<8):return None
         if fish.db.execute("SELECT 1 FROM deliveries WHERE state='accepted' AND updated>?",(now-30,)).fetchone():return None

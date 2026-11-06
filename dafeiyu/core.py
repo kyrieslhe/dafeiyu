@@ -222,6 +222,8 @@ class Fish:
         history_matches=related(self,text)
         from .curiosity import status as curiosity_status
         autonomous_state=curiosity_status(self)
+        from .presence import status as presence_status
+        autonomous_state['临时免打扰状态（不是情绪推断）']=presence_status(self)
         from .interests import context as interest_context
         autonomous_state['真实兴趣线（开放问题不是事实）']=interest_context(self)
         from .relationship import context as relationship_context
