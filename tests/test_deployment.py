@@ -62,3 +62,13 @@ class DeploymentTests(unittest.TestCase):
             with patch.object(module,'ROOT',root),patch.object(module,'module',return_value=service):
                 with self.assertRaisesRegex(ValueError,'任务运行'):module.activate(commit)
             service.control.assert_not_called()
+    def test_pending_transcript_refuses_unsafe_older_release_before_service_stop(self):
+        spec=importlib.util.spec_from_file_location('deploy_voice_fixture',ROOT/'scripts/deploy.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve();commit=self.repo(root);prepare(root)
+            db=sqlite3.connect(root/'var/fish.sqlite');db.execute('CREATE TABLE tasks(state TEXT)')
+            db.execute('CREATE TABLE conversation_inbox(state TEXT,transcribed INTEGER)')
+            db.execute("INSERT INTO conversation_inbox VALUES ('queued',1)");db.commit();db.close();service=Mock()
+            with patch.object(module,'ROOT',root),patch.object(module,'module',return_value=service):
+                with self.assertRaisesRegex(ValueError,'语音转写'):module.activate(commit)
+            service.control.assert_not_called()

@@ -17,13 +17,15 @@ def initialize(fish):
         fish.db.execute("UPDATE settings SET value=value WHERE key='paused'")
         if 'images' not in {row[1] for row in fish.db.execute('PRAGMA table_info(conversation_inbox)')}:fish.db.execute("ALTER TABLE conversation_inbox ADD COLUMN images TEXT DEFAULT '[]'")
 
+        if 'transcribed' not in {row[1] for row in fish.db.execute('PRAGMA table_info(conversation_inbox)')}:fish.db.execute("ALTER TABLE conversation_inbox ADD COLUMN transcribed INTEGER DEFAULT 0")
 
-def enqueue(fish,key,account,sender,text,images=None):
+def enqueue(fish,key,account,sender,text,images=None,transcribed=False):
     initialize(fish)
     with fish.db:
         from .presence import observe
-        observe(fish,text)
+        if not transcribed:observe(fish,text)
         fish.db.execute("INSERT OR IGNORE INTO conversation_inbox(inbound_id,account,sender,content,state,created) VALUES (?,?,?,?,'queued',?)",(key,account,sender,text,fish.clock()))
+        if transcribed:fish.db.execute('UPDATE conversation_inbox SET transcribed=1 WHERE inbound_id=?',(key,))
         if images:fish.db.execute('UPDATE conversation_inbox SET images=? WHERE inbound_id=?',(json.dumps(images),key))
         fish.db.execute("UPDATE inbound SET state='buffered' WHERE id=?",(key,))
     return ''
@@ -102,10 +104,12 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
                 rows_with_images=fish.rows("SELECT images FROM conversation_inbox WHERE claimed=? AND account=? AND sender=? AND images!='[]' ORDER BY id",(prior['claimed'],binding['account'],binding['sender']))
                 images=[value for row in rows_with_images for value in json.loads(row['images'])][:2]
                 with fish.db:fish.db.execute('UPDATE conversation_inbox SET images=? WHERE id=?',(json.dumps(images),ids[0]))
-        if images:
-            from .media import stored_image_paths
-            images=stored_image_paths(fish.home,images)
-            reply=fish.chat(text,images=images)
+        transcribed=any(row['transcribed'] for row in chosen)
+        if images or transcribed:
+            if images:
+                from .media import stored_image_paths
+                images=stored_image_paths(fish.home,images)
+            reply=fish.chat(text,images=images or None,allow_actions=not transcribed)
         else:reply=fish.command(text)
     except ValueError as error:reply=str(error)
     except ModelError:reply='鱼脑袋这次没接上，暂时没能生成回复。你可以稍后再试。'

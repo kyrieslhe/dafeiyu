@@ -87,6 +87,9 @@ def inbound(fish, event):
                 from .speech import transcribe
                 with staged_audio(fish.home,media) as audio:
                     transcript=transcribe(audio)
+                if event.get('buffer_text') is True:
+                    from .conversation import enqueue
+                    return enqueue(fish,key,account,sender,'语音转写（可能有误）：'+transcript,transcribed=True)
                 fish.model.timeout_seconds=60
                 result=fish.chat('语音转写（可能有误）：'+transcript,allow_actions=False)
             elif media:
