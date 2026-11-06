@@ -34,8 +34,9 @@ def barrier(fish,key,account,sender):
     with fish.db:fish.db.execute("INSERT OR IGNORE INTO conversation_inbox(inbound_id,account,sender,content,state,created) VALUES (?,?,?,'','control',?)",(key,account,sender,fish.clock()))
 
 
-def bubbles(text):
+def bubbles(text,goal=''):
     # Paragraphs express semantic boundaries; preserve code, lists and long explanations.
+    if re.search('正式|别卖萌|不要卖萌|一次发完|不要分条|不要分段',goal):return [text]
     if len(text)>900 or '```' in text or re.search(r'(?m)^\s*(?:[-*]|\d+[.)]) ',text):return [text]
     parts=[p.strip() for p in text.split('\n\n') if p.strip()]
     if 1<len(parts)<=3:return parts
@@ -56,7 +57,7 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
         if not rows:return
         # Wait for a quiet gap, but bound waiting when someone sends continuously.
         recent=fish.db.execute("SELECT count(DISTINCT claimed) FROM conversation_inbox WHERE state='superseded' AND claimed>?",(now-60,)).fetchone()[0]
-        gap=min(4,1.8+.6*min(3,recent))
+        gap=min(4,1.8+.6*min(4,recent))
         if now-rows[-1]['created']<gap and now-rows[0]['created']<8:return
         rows=[r for r in rows if r['account']==binding['account'] and r['sender']==binding['sender']]
         if not rows:return
@@ -95,7 +96,7 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
         return 'superseded'
     with fish.db:fish.db.execute("UPDATE conversation_inbox SET state='sending',reply=? WHERE id IN ("+marks+')',[reply]+ids)
     state='accepted';sent=[]
-    for index,part in enumerate(bubbles(reply)):
+    for index,part in enumerate(bubbles(reply,'\n'.join(row['content'] for row in chosen))):
         if index:
             sleep(min(2.5,.6+len(part)/100))
             if not current():state='interrupted';break

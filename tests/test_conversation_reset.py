@@ -45,3 +45,10 @@ class Reset(unittest.TestCase):
             result=step(f,lambda *a,**k:subprocess.CompletedProcess('send',0,'{}',''))
             self.assertEqual(result,'accepted')
             self.assertEqual(f.db.execute("SELECT count(*) FROM conversation_inbox WHERE state='identity_changed'").fetchone()[0],12);f.close()
+
+    def test_explicit_single_message_or_formal_request_preserves_whole_reply(self):
+        from dafeiyu.conversation import bubbles
+        text='一个观点。\n\n第二个观点。'
+        self.assertEqual(bubbles(text,'请一次发完'),[text])
+        self.assertEqual(bubbles(text,'正式说明'),[text])
+        self.assertEqual(len(bubbles(text,'今天有个好消息')),2)
