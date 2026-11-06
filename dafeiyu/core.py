@@ -196,6 +196,8 @@ class Fish:
             self.db.execute('DELETE FROM messages WHERE created < ?', (self.clock()-30*86400,))
         from . import memory, life, curiosity
         memory.initialize(self)
+        from .interests import initialize as initialize_interests
+        initialize_interests(self)
         life.initialize(self)
         curiosity.initialize(self)
 
@@ -220,6 +222,8 @@ class Fish:
         history_matches=related(self,text)
         from .curiosity import status as curiosity_status
         autonomous_state=curiosity_status(self)
+        from .interests import context as interest_context
+        autonomous_state['真实兴趣线（开放问题不是事实）']=interest_context(self)
         recent_events=self.rows('SELECT kind,substr(content,1,500) AS content,created FROM episodes ORDER BY id DESC LIMIT 2')
         for event in recent_events:event['at']=datetime.fromtimestamp(event['created'],ZoneInfo('Asia/Hong_Kong')).isoformat()
         diary = self.rows('SELECT substr(content,1,400) AS content FROM diary ORDER BY id DESC LIMIT 2')
@@ -272,6 +276,8 @@ class Fish:
             self.db.execute('DELETE FROM diary')
             self.db.execute('DELETE FROM episodes')
             self.db.execute('DELETE FROM exploration_notes')
+            self.db.execute('DELETE FROM interest_threads')
+            self.db.execute('DELETE FROM interest_steps')
             if self.db.execute("SELECT 1 FROM sqlite_master WHERE name='inbound'").fetchone():self.db.execute('UPDATE inbound SET reply=NULL')
             self.db.execute("DELETE FROM memories WHERE id IN (SELECT memory_id FROM memory_meta WHERE source LIKE 'reflection:%')")
             self.db.execute('DELETE FROM reflections')
@@ -395,6 +401,8 @@ class Fish:
                         share=result.split('\n\n### 抓取记录')[0].strip()[:1800]+'\n\n完整资料：大肥鱼 /result '+row['id']
                     if row['kind']=='explore':
                         share=result.split('\n\n### 抓取记录')[0].strip()[:1800]
+                        from .interests import complete as complete_interest
+                        complete_interest(self,row['id'],result)
                         self.db.execute('INSERT OR IGNORE INTO exploration_notes VALUES (?,?,?,?,?)',(row['id'],row['goal'][:200],share,json.dumps([source['url'] for source in metadata['sources']]),self.clock()))
                     from .curiosity import should_share
                     if should_share(self,row['id'],share):self.db.execute('INSERT OR IGNORE INTO outbox(task_id,content) VALUES (?,?)', (row['id'], share))
