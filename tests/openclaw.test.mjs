@@ -62,3 +62,17 @@ test('public dispatcher receives real local identity-binding response',async()=>
   assert.equal(result.handled,true);assert.equal(result.queuedFinal,true);assert.match(payloads[0].text,/确认微信身份绑定/);
  }finally{rmSync(home,{recursive:true,force:true});}
 });
+
+test('bound text dispatch buffers immediately without queuing an empty or fallback reply',async()=>{
+ const {execFileSync}=await import('node:child_process');
+ const home=mkdtempSync(join(tmpdir(),'fish-buffer-'));const hooks={};const payloads=[];
+ try{
+  execFileSync(process.env.PYTHON||'python3',['-c',"import sys;from dafeiyu.core import Fish;from dafeiyu.channel import tables;f=Fish(sys.argv[1]);tables(f);f.db.execute(\"INSERT INTO channel_binding VALUES (1,'a','Sender@im.wechat',0)\");f.db.commit();f.close()",home]);
+  plugin.register({pluginConfig:{python:process.env.PYTHON||'python3',project:resolve('.'),home},on:(name,fn)=>hooks[name]=fn,registerCommand:()=>{}});
+  const result=await hooks.reply_dispatch({ctx:{Provider:'openclaw-weixin',AccountId:'a',ChatType:'direct',From:'Sender@im.wechat',MessageSidFull:'burst-one',Body:'hello'},sendPolicy:'allow'},
+    {dispatcher:{sendFinalReply:p=>{payloads.push(p);return true;},getQueuedCounts:()=>({tool:0,block:0,final:0})},recordProcessed:()=>{},markIdle:()=>{}});
+  assert.equal(result.handled,true);assert.equal(result.queuedFinal,false);assert.deepEqual(payloads,[]);
+  const count=execFileSync(process.env.PYTHON||'python3',['-c',"import sqlite3,sys;c=sqlite3.connect(sys.argv[1]+'/fish.sqlite');print(c.execute(\"SELECT count(*) FROM conversation_inbox WHERE state='queued'\").fetchone()[0])",home],{encoding:'utf8'});
+  assert.equal(count.trim(),'1');
+ }finally{rmSync(home,{recursive:true,force:true});}
+});
