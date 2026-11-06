@@ -205,6 +205,8 @@ class Fish:
         initialize_platforms(self)
         from .watching import initialize as initialize_watching
         initialize_watching(self)
+        from .sharing import initialize as initialize_sharing
+        initialize_sharing(self)
         life.initialize(self)
         curiosity.initialize(self)
 
@@ -233,6 +235,8 @@ class Fish:
         autonomous_state['临时免打扰状态（不是情绪推断）']=presence_status(self)
         from .interests import context as interest_context
         autonomous_state['真实兴趣线（开放问题不是事实）']=interest_context(self)
+        from .sharing import taste
+        autonomous_state['本鱼实际探索选择（非用户画像）']=taste(self)
         from .relationship import context as relationship_context
         relationship_state=relationship_context(self,text)
         recent_events=self.rows('SELECT kind,substr(content,1,500) AS content,created FROM episodes ORDER BY id DESC LIMIT 2')
@@ -347,6 +351,7 @@ class Fish:
             expired=self.rows("SELECT id FROM tasks WHERE state='running' AND lease<?",(now,))
             self.db.execute("UPDATE tasks SET state='failed',error='运行中断或超时；请重新创建任务' WHERE state='running' AND lease<?", (now,))
             for item in expired:
+                if item['id'].startswith(('curious-','life-')):continue
                 self.db.execute('INSERT OR IGNORE INTO outbox(task_id,content) VALUES (?,?)',(item['id'],'任务 '+item['id']+' 已中断或超时，没有完成；请查看 /result '+item['id']+'，需要时重新创建。'))
             if self.db.execute("SELECT value FROM settings WHERE key='paused'").fetchone()[0] == '1':
                 return None
@@ -357,12 +362,15 @@ class Fish:
             changed = self.db.execute("UPDATE tasks SET state='running',lease=?,attempts=attempts+1 WHERE id=? AND state='queued'", (now+600, row['id'])).rowcount
             if not changed:
                 return None
+        from .relationship import generation
+        task_generation=generation(self)
         waiting = False
         changed = False
         if isinstance(self.model, Model):
             def cancelled():
                 if self.db.execute('SELECT state FROM tasks WHERE id=?',(row['id'],)).fetchone()[0]!='running':return True
                 if automatic(row['id']):
+                    if row['kind']=='explore' and task_generation!=generation(self):return True
                     from .quota import guard
                     return guard(self)['status']!='ok'
                 return False
@@ -377,7 +385,8 @@ class Fish:
                     if site:
                         try:result,metadata=read_platform(self,site,row['goal'],row['id'])
                         except (ValueError,ModelError):site=None
-                    if not site:result,metadata=research(self.model,row['goal'],companion=True,feed_urls=for_topic(self,row['id'],row['goal']),seen_urls={r['url'] for r in self.rows('SELECT url FROM feed_reads')},discover=row['id'].startswith(('curious-','life-')))
+                    from .sharing import context as sharing_context,public_goal
+                    if not site:result,metadata=research(self.model,row['goal'],companion=True,feed_urls=for_topic(self,row['id'],row['goal']),seen_urls={r['url'] for r in self.rows('SELECT url FROM feed_reads')},discover=row['id'].startswith(('curious-','life-')),share_context=sharing_context(self,row['goal']) if row['id'].startswith(('curious-','life-')) else None,search_question=public_goal(self,row['id'],row['goal']))
                 else:result,metadata=research(self.model,row['goal'],companion=not any(term in row['goal'] for term in ('正式报告','详细报告','研究报告','不要卖萌','学术')))
             elif row['kind'] == 'browser':
                 from .browser import browse
@@ -417,6 +426,7 @@ class Fish:
                 result = '【模型生成，未联网核实】\n' + self.model.reply(self.context(prompt))
             else:
                 raise ValueError('当前运行版本不支持该任务类型，未执行。')
+            if row['kind']=='explore' and row['id'].startswith(('curious-','life-')) and task_generation!=generation(self):raise ModelError('聊天背景已清空，已丢弃旧背景探索结果。')
             if not waiting and self.db.execute('SELECT state FROM tasks WHERE id=?', (row['id'],)).fetchone()[0] == 'running':
                 reports = self.home / 'reports'
                 reports.mkdir(exist_ok=True)
@@ -424,6 +434,9 @@ class Fish:
                 if row['kind'] in ('research','explore','browser','video','platform'):
                     (reports / (row['id']+'.sources.json')).write_text(json.dumps(metadata,ensure_ascii=False,indent=2))
             with self.db:
+                if row['kind']=='explore' and row['id'].startswith(('curious-','life-')):
+                    self.db.execute("UPDATE settings SET value=value WHERE key='relationship_generation'")
+                    if task_generation!=generation(self):raise ModelError('聊天背景已清空，已丢弃旧背景探索结果。')
                 changed = self.db.execute("UPDATE tasks SET state=?,result=?,lease=NULL WHERE id=? AND state='running'", ('waiting_approval' if waiting else 'succeeded', result, row['id'])).rowcount
                 if changed:
                     if row['kind']=='reflect':
@@ -435,6 +448,8 @@ class Fish:
                         share=result.split('\n\n### 抓取记录')[0].strip()[:1800]
                         from .interests import complete as complete_interest
                         complete_interest(self,row['id'],result)
+                        from .sharing import record as record_choice
+                        record_choice(self,row,metadata)
                         for url in metadata.get('feed_entries',[]):self.db.execute('INSERT OR REPLACE INTO feed_reads VALUES (?,?,?)',(url,row['id'],self.clock()))
                         self.db.execute('INSERT OR IGNORE INTO exploration_notes VALUES (?,?,?,?,?)',(row['id'],row['goal'][:200],share,json.dumps([source['url'] for source in metadata['sources']]),self.clock()))
                     from .curiosity import should_share
@@ -444,7 +459,7 @@ class Fish:
             safe = str(error) if isinstance(error, (ModelError, ValueError)) or error.__class__.__name__ in ('ResearchError', 'CodingError') else '任务处理失败（%s），未产生结果。' % type(error).__name__
             with self.db:
                 failed=self.db.execute("UPDATE tasks SET state='failed',error=?,lease=NULL WHERE id=? AND state='running'", (safe, row['id'])).rowcount
-                if failed:
+                if failed and not (row['kind']=='explore' and row['id'].startswith(('curious-','life-'))):
                     self.db.execute('INSERT OR IGNORE INTO outbox(task_id,content) VALUES (?,?)',(row['id'],'任务 '+row['id']+' 没有完成：'+safe+'\n查看：大肥鱼 /result '+row['id']))
         finally:
             self.flush_usage(row['id'])

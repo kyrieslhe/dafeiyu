@@ -12,6 +12,8 @@ def generation(fish):
 
 
 def reset(fish):
+    from .sharing import reset as reset_sharing
+    reset_sharing(fish)
     fish.db.execute("INSERT OR REPLACE INTO settings VALUES ('relationship_reset',?)",(str(fish.clock()),))
     fish.db.execute("INSERT INTO settings VALUES ('relationship_generation','1') ON CONFLICT(key) DO UPDATE SET value=CAST(value AS INTEGER)+1")
 
