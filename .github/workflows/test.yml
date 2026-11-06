@@ -110,3 +110,18 @@ jobs:
       - run: python -m unittest discover -s tests -p test_video.py -v
         env:
           DAFEIYU_TEST_VIDEO: '1'
+
+  linux-host:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/setup_runtime.py
+      - run: sh -n scripts/openclaw
+      - run: scripts/openclaw --version
+      - run: var/runtime/node/bin/node tests/runtime/compat.mjs var/openclaw
+      - run: |
+          python scripts/linux_service.py print > /tmp/dafeiyu.service
+          systemd-analyze verify /tmp/dafeiyu.service

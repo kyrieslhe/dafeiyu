@@ -101,7 +101,12 @@ def supervise(keep_awake):
                     processes_ok=status.returncode==0 and isinstance(states,dict) and {'gateway','worker'}.issubset(states) and all(value=='running' for value in states.values())
                 except (OSError,ValueError,subprocess.TimeoutExpired):processes_ok=False
                 gateway_ok,channel_ok=probe() if processes_ok else (False,False)
-                decision=policy.observe(processes_ok,gateway_ok,channel_ok,time.monotonic(),time.time())
+                wall=time.time();gap=wall-policy.last_wall if policy.last_wall is not None else 0
+                decision=policy.observe(processes_ok,gateway_ok,channel_ok,time.monotonic(),wall)
+                sys.path.insert(0,str(ROOT)) if str(ROOT) not in sys.path else None
+                from dafeiyu.runtime_health import record as record_health
+                try:record_health(ROOT/'var',{'sampled_at':wall,'processes_ok':processes_ok,'gateway_ok':gateway_ok,'channel_ok':channel_ok,'paused':False,'gap_seconds':round(max(0,gap),1),'repair':list(decision) if decision else None})
+                except OSError:print('Health sample could not be written.',flush=True)
                 if decision:
                     action,reason=decision
                     print('Watchdog: '+action+' ('+reason+')',flush=True)

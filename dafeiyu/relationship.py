@@ -8,7 +8,9 @@ from .memory import reject_secret
 
 def context(fish,query=None):
     now=fish.clock();days=set();anchors=[]
-    rows=fish.rows("SELECT id,content,created FROM messages WHERE role='user' AND created>? AND length(content)>=12 AND substr(content,1,1)!='/' ORDER BY id DESC LIMIT 100",(now-14*86400,))
+    reset=fish.db.execute("SELECT value FROM settings WHERE key='relationship_reset'").fetchone()
+    reset=float(reset[0]) if reset else 0
+    rows=fish.rows("SELECT id,content,created FROM messages WHERE role='user' AND created>? AND length(content)>=12 AND substr(content,1,1)!='/' ORDER BY id DESC LIMIT 100",(max(now-14*86400,reset),))
     for row in rows:
         date=datetime.fromtimestamp(row['created'],ZoneInfo('Asia/Hong_Kong'))
         day=date.strftime('%Y-%m-%d')
@@ -18,7 +20,7 @@ def context(fish,query=None):
         days.add(day);anchors.append({'message_id':row['id'],'at':date.isoformat(),'user_quote':row['content'][:240],'status':'用户当时说过的话，不是永久事实或当前状态'})
         if len(anchors)>=(3 if query is None or re.search("记得|昨天|上次|前天|之前",query) else 1):break
     tasks=[]
-    for row in ([] if query is not None and not re.search('查|任务|结果|进度|刚才|之前|做完|怎么样|那件事|那个|上次',query) else fish.rows("SELECT id,kind,goal,state,result,error,created FROM tasks WHERE created>? AND kind IN ('research','explore','browser','video','reminder','speech','platform') ORDER BY created DESC LIMIT 3",(now-3*86400,))):
+    for row in ([] if query is not None and not re.search('查|任务|结果|进度|刚才|之前|做完|怎么样|那件事|那个|上次',query) else fish.rows("SELECT id,kind,goal,state,result,error,created FROM tasks WHERE created>? AND kind IN ('research','explore','browser','video','reminder','speech','platform') ORDER BY created DESC LIMIT 3",(max(now-3*86400,reset if query is not None else 0),))):
         goal=row['goal']
         if row['kind']=='video':
             try:goal=json.loads(goal).get('question','短视频采样')

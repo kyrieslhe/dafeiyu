@@ -130,7 +130,9 @@ def health(fish):
     rows=fish.rows('SELECT received,finished,outcome FROM inbound_stats WHERE received>?',(now-86400,))
     durations=sorted(max(0,r['finished']-r['received']) for r in rows if r['finished'] is not None)
     last=fish.db.execute('SELECT last_seen FROM channel_binding WHERE singleton=1').fetchone()
-    return {'inbound_24h':len(rows),'outcomes':{state:sum(r['outcome']==state for r in rows) for state in ('completed','failed','rejected','interrupted','processing')},
+    from .runtime_health import summary as runtime_summary
+    conversation=fish.rows('SELECT state,count(*) AS count FROM conversation_inbox GROUP BY state') if fish.db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone() else []
+    return {'runtime_sample':runtime_summary(fish.home,now),'conversation_states':conversation,'inbound_24h':len(rows),'outcomes':{state:sum(r['outcome']==state for r in rows) for state in ('completed','failed','rejected','interrupted','processing')},
             'p95_processing_seconds':round(durations[max(0,(95*len(durations)+99)//100-1)],2) if durations else None,
             'seconds_since_inbound':round(max(0,now-last['last_seen'])) if last and last['last_seen'] else None,
             'task_states':fish.rows('SELECT state,count(*) AS count FROM tasks GROUP BY state'),

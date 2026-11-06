@@ -16,11 +16,16 @@ ROOT=Path(__file__).resolve().parent.parent
 RUNTIME=ROOT/'var/runtime'
 VERSION='v26.13.0'
 
+def distribution(system,machine):
+    systems={'Darwin':'darwin','Linux':'linux'};architectures={'arm64':'arm64','aarch64':'arm64','x86_64':'x64','AMD64':'x64'}
+    if system not in systems or machine not in architectures:raise ValueError('运行时安装支持 macOS/Linux 的 arm64 或 x64。')
+    return systems[system],architectures[machine]
+
+
 def main():
-    if platform.system()!='Darwin':raise SystemExit('此安装脚本目前支持 macOS。Python 核心与容器测试可在 Linux 运行。')
-    arch='arm64' if platform.machine()=='arm64' else 'x64'
+    system,arch=distribution(platform.system(),platform.machine())
     RUNTIME.mkdir(parents=True,exist_ok=True)
-    name=f'node-{VERSION}-darwin-{arch}'
+    name=f'node-{VERSION}-{system}-{arch}'
     installed=RUNTIME/name
     if not installed.exists():
         archive=RUNTIME/(name+'.tar.gz');base=f'https://nodejs.org/dist/{VERSION}/'
@@ -31,10 +36,15 @@ def main():
         with tarfile.open(archive) as contents:
             for member in contents:
                 dest=(RUNTIME/member.name).resolve()
-                if not dest.is_relative_to(RUNTIME.resolve()):raise SystemExit('非法归档路径')
+                if not dest.is_relative_to(installed.resolve()) or not (member.isfile() or member.isdir() or member.issym() or member.islnk()):raise SystemExit('非法归档路径或类型')
+                if member.issym() or member.islnk():
+                    target=((dest.parent/member.linkname) if member.issym() else (RUNTIME/member.linkname)).resolve()
+                    if not target.is_relative_to(installed.resolve()):raise SystemExit('非法归档链接')
             contents.extractall(RUNTIME)
     link=RUNTIME/'node'
+    if link.is_symlink() and link.resolve()!=installed.resolve():link.unlink()
     if not link.exists():link.symlink_to(installed.name,target_is_directory=True)
+    elif not link.is_symlink():raise SystemExit('node 路径不是本项目管理的链接，未覆盖。')
     destination=ROOT/'var/openclaw';destination.mkdir(parents=True,exist_ok=True)
     for name in ['package.json','package-lock.json']:shutil.copyfile(ROOT/'integrations/runtime'/name,destination/name)
     vendor=destination/'vendor';vendor.mkdir(exist_ok=True)
