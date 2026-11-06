@@ -60,7 +60,8 @@ export function bridge(config, event, context, abortSignal) {
       message_id:stableMessageId(event,context),
       group:event.isGroup !== false,
       text:event.content || event.body || '',
-      media:event.media || []
+      media:event.media || [],
+      buffer_text:true
     }));
   });
 }
@@ -81,8 +82,8 @@ export default {
       try { response=await bridge(config,input.event,input.context,context.abortSignal); }
       catch { response={text:'本地大肥鱼服务暂时不可用，请在本机检查状态。'}; }
       context.turnAdoption?.assertCurrent();
-      const queuedFinal=context.dispatcher.sendFinalReply({text:response.text});
-      context.recordProcessed?.(queuedFinal?'completed':'error',{reason:queuedFinal?'dafeiyu_reply_queued':'dafeiyu_reply_not_queued'});
+      const queuedFinal=response.text==='' ? false : context.dispatcher.sendFinalReply({text:response.text});
+      context.recordProcessed?.(queuedFinal || response.text===''?'completed':'error',{reason:response.text===''?'dafeiyu_turn_buffered':(queuedFinal?'dafeiyu_reply_queued':'dafeiyu_reply_not_queued')});
       context.markIdle?.('dafeiyu_reply_finished');
       return {handled:true,queuedFinal,counts:context.dispatcher.getQueuedCounts()};
     }, {timeoutMs:120000,priority:1000});

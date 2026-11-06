@@ -64,7 +64,7 @@ def main():
         status=subprocess.run([sys.executable,str(ROOT/'scripts/services.py'),'status'],capture_output=True,text=True,timeout=5)
         try:
             states=json.loads(status.stdout)
-            if len(states)==2 and all(value=='running' for value in states.values()):ready=True;break
+            if len(states)>=2 and all(value=='running' for value in states.values()):ready=True;break
         except ValueError:pass
         time.sleep(.5)
     if not ready:

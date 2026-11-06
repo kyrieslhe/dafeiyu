@@ -29,6 +29,7 @@ def activate(commit):
             db.execute('BEGIN IMMEDIATE')
             busy=db.execute("SELECT count(*) FROM tasks WHERE state IN ('running','applying')").fetchone()[0]
             if db.execute("SELECT 1 FROM sqlite_master WHERE name='inbound'").fetchone():busy+=db.execute("SELECT count(*) FROM inbound WHERE state='running'").fetchone()[0]
+            if db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone():busy+=db.execute("SELECT count(*) FROM conversation_inbox WHERE state IN ('working','sending')").fetchone()[0]
             if busy:raise ValueError('有聊天或任务运行，未切换，请稍后重试。')
             config_path=ROOT/'var/gateway/openclaw.json';config=json.loads(config_path.read_text())
             receipt=ROOT/'var/active-release.json';old=json.loads(receipt.read_text()) if receipt.exists() else None
@@ -43,7 +44,7 @@ def activate(commit):
                 services.control(argparse.Namespace(action='start',internal=True))
                 for _ in range(12):
                     records=services.state()
-                    if len(records)==2 and all(services.active(e) for e in records.values()) and all(supervisor.probe()):break
+                    if len(records)>=2 and all(services.active(e) for e in records.values()) and all(supervisor.probe()):break
                     time.sleep(1)
                 else:raise ValueError('新版本渠道健康检查未通过。')
             except BaseException:

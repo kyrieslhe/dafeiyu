@@ -98,7 +98,7 @@ def supervise(keep_awake):
                 try:
                     status=subprocess.run([sys.executable,str(ROOT/'scripts/services.py'),'status'],capture_output=True,text=True,timeout=10)
                     states=json.loads(status.stdout)
-                    processes_ok=status.returncode==0 and isinstance(states,dict) and set(states)=={'gateway','worker'} and all(value=='running' for value in states.values())
+                    processes_ok=status.returncode==0 and isinstance(states,dict) and {'gateway','worker'}.issubset(states) and all(value=='running' for value in states.values())
                 except (OSError,ValueError,subprocess.TimeoutExpired):processes_ok=False
                 gateway_ok,channel_ok=probe() if processes_ok else (False,False)
                 decision=policy.observe(processes_ok,gateway_ok,channel_ok,time.monotonic(),time.time())

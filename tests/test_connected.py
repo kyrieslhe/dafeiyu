@@ -58,7 +58,7 @@ class ConnectedTests(unittest.TestCase):
         self.assertIsNone(deliver(self.fish,lambda *a,**k:self.fail('repeated')))
     def test_expired_context_waits_for_new_inbound(self):
         self.bind();self.task();self.now+=100
-        self.assertEqual(deliver(self.fish),'waiting_context')
+        self.assertEqual(deliver(self.fish,lambda *a,**k:subprocess.CompletedProcess('send',1,'','context expired')),'waiting_context')
         self.assertIsNone(deliver(self.fish))
         self.now+=1
         inbound(self.fish,self.event(text='/tasks'))
