@@ -1,5 +1,4 @@
 """At-most-one attempt per result using the SDK-managed platform context. Never treats accepted as read."""
-import json
 from pathlib import Path
 import subprocess
 from datetime import datetime
@@ -48,17 +47,8 @@ def deliver(fish, runner=subprocess.run):
     state='delivery_unknown';error=None
     try:
         result=runner(command,capture_output=True,text=True,timeout=60)
-        # Re-check binding before future attempts. In-flight send has already been admitted.
-        if result.returncode==0:
-            try: json.loads(result.stdout);state='accepted'
-            except ValueError:error='发送返回格式异常，投递结果不确定。'
-        else:
-            combined=(result.stdout+result.stderr).lower()
-            if any(term in combined for term in ('context_token','context token','context expired','context is required')):
-                state='waiting_context';error='上下文失效；等待用户新消息。'
-            elif any(term in combined for term in ('unauthorized','forbidden','401','403')):
-                state='auth_failed';error='渠道认证失败，需本机检查登录。'
-            else:error='发送失败或结果不确定；不自动重复发送。'
+        from .send_outcome import outcome
+        state,error=outcome(result)
     except (OSError,subprocess.TimeoutExpired):error='发送超时或进程失败，结果不确定；不自动重复发送。'
     with fish.db:
         fish.db.execute('UPDATE deliveries SET state=?,error=?,updated=? WHERE outbox_id=?',(state,error,fish.clock(),row['id']))
