@@ -124,4 +124,4 @@ jobs:
       - run: var/runtime/node/bin/node tests/runtime/compat.mjs var/openclaw
       - run: |
           python scripts/linux_service.py print > /tmp/dafeiyu.service
-          systemd-analyze verify /tmp/dafeiyu.service
+          SYSTEMD_UNIT_PATH=/tmp:/lib/systemd/system systemd-analyze verify /tmp/dafeiyu.service
