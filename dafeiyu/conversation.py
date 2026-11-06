@@ -25,6 +25,15 @@ def enqueue(fish,key,account,sender,text):
     return ''
 
 
+def immediate(text):
+    return text in ('/pause','/resume','/life off','/platforms off','暂停自主任务','继续') or text.startswith(('/cancel ','/quiet '))
+
+
+def barrier(fish,key,account,sender):
+    initialize(fish)
+    with fish.db:fish.db.execute("INSERT OR IGNORE INTO conversation_inbox(inbound_id,account,sender,content,state,created) VALUES (?,?,?,'','control',?)",(key,account,sender,fish.clock()))
+
+
 def bubbles(text):
     # Paragraphs express semantic boundaries; preserve code, lists and long explanations.
     if len(text)>900 or '```' in text or re.search(r'(?m)^\s*(?:[-*]|\d+[.)]) ',text):return [text]
@@ -41,10 +50,14 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
         fish.db.execute("DELETE FROM conversation_inbox WHERE created<?",(now-30*86400,))
         binding=fish.db.execute('SELECT * FROM channel_binding WHERE singleton=1').fetchone()
         if not binding:return
+        fish.db.execute("UPDATE conversation_inbox SET state='identity_changed',content='',reply=NULL WHERE state='queued' AND (account!=? OR sender!=?)",(binding['account'],binding['sender']))
+        fish.db.execute("UPDATE inbound_stats SET finished=?,outcome='rejected' WHERE finished IS NULL AND id IN (SELECT inbound_id FROM conversation_inbox WHERE state='identity_changed')",(now,))
         rows=fish.rows("SELECT * FROM conversation_inbox WHERE state='queued' ORDER BY id LIMIT 12")
         if not rows:return
         # Wait for a quiet gap, but bound waiting when someone sends continuously.
-        if now-rows[-1]['created']<1.8 and now-rows[0]['created']<8:return
+        recent=fish.db.execute("SELECT count(DISTINCT claimed) FROM conversation_inbox WHERE state='superseded' AND claimed>?",(now-60,)).fetchone()[0]
+        gap=min(4,1.8+.6*min(3,recent))
+        if now-rows[-1]['created']<gap and now-rows[0]['created']<8:return
         rows=[r for r in rows if r['account']==binding['account'] and r['sender']==binding['sender']]
         if not rows:return
         chosen=[];size=0
@@ -57,15 +70,19 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
         if changed!=len(ids):return
     before=fish.db.execute('SELECT coalesce(max(id),0) FROM messages').fetchone()[0]
     before_episode=fish.db.execute('SELECT coalesce(max(id),0) FROM episodes').fetchone()[0]
-    try:reply=fish.command('\n'.join(r['content'] for r in chosen))
-    except (ValueError,ModelError):reply='鱼脑袋这次没接上，暂时没能生成回复。你可以稍后再试。'
-    except Exception:reply='本鱼这次处理失败了，请稍后再试。'
-    if not isinstance(reply,str):reply=json.dumps(reply,ensure_ascii=False)
     def current():
         active=fish.db.execute('SELECT * FROM channel_binding WHERE singleton=1').fetchone()
         existing=fish.db.execute("SELECT 1 FROM conversation_inbox WHERE id=? AND state IN ('working','sending')",(ids[0],)).fetchone()
-        newer=fish.db.execute("SELECT 1 FROM conversation_inbox WHERE id>? AND state='queued'",(ids[-1],)).fetchone()
+        newer=fish.db.execute("SELECT 1 FROM conversation_inbox WHERE id>? AND state IN ('queued','control')",(ids[-1],)).fetchone()
         return existing and active and active['account']==binding['account'] and active['sender']==binding['sender'] and not newer
+    previous_cancel=getattr(fish.model,'cancelled',None)
+    if previous_cancel is not None:fish.model.cancelled=lambda:previous_cancel() or not current()
+    try:reply=fish.command('\n'.join(r['content'] for r in chosen))
+    except (ValueError,ModelError):reply='鱼脑袋这次没接上，暂时没能生成回复。你可以稍后再试。'
+    except Exception:reply='本鱼这次处理失败了，请稍后再试。'
+    finally:
+        if previous_cancel is not None:fish.model.cancelled=previous_cancel
+    if not isinstance(reply,str):reply=json.dumps(reply,ensure_ascii=False)
     if not current():
         with fish.db:
             fish.db.execute("UPDATE conversation_inbox SET state='superseded' WHERE id IN ("+marks+')',ids)

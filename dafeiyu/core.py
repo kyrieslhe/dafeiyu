@@ -280,6 +280,7 @@ class Fish:
             if not cursor.rowcount:
                 return '没有这个记忆编号。'
             self.db.execute('DELETE FROM messages')
+            self.db.execute("INSERT OR REPLACE INTO settings VALUES ('relationship_reset',?)",(str(self.clock()),))
             if self.db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone():self.db.execute("UPDATE conversation_inbox SET content='',reply=NULL WHERE state!='queued'")
             self.db.execute('DELETE FROM diary')
             self.db.execute('DELETE FROM episodes')
@@ -584,6 +585,7 @@ class Fish:
         if command == '/clear':
             with self.db:
                 self.db.execute('DELETE FROM messages')
+                self.db.execute("INSERT OR REPLACE INTO settings VALUES ('relationship_reset',?)",(str(self.clock()),))
                 if self.db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone():self.db.execute("UPDATE conversation_inbox SET content='',reply=NULL WHERE state!='queued'")
                 self.db.execute("DELETE FROM episodes WHERE kind='conversation'")
             return '聊天上下文已清空；明确记忆仍保留。'

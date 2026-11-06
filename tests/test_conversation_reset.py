@@ -1,0 +1,47 @@
+import tempfile
+import unittest
+from dafeiyu.core import Fish,ModelError
+from dafeiyu.channel import tables,inbound
+from dafeiyu.conversation import step
+from dafeiyu.relationship import context
+
+
+class Reset(unittest.TestCase):
+    def event(self,message,text,sender='s'):
+        return {'channel':'openclaw-weixin','group':False,'account':'a','sender':sender,'message_id':message,'text':text,'buffer_text':True}
+    def test_clear_and_forget_do_not_automatically_reinject_old_task_results(self):
+        with tempfile.TemporaryDirectory() as home:
+            f=Fish(home,clock=lambda:1000)
+            with f.db:f.db.execute("INSERT INTO tasks(id,kind,goal,state,result,created) VALUES ('old','research','private question','succeeded','old answer',999)")
+            self.assertTrue(context(f,'刚才的任务')['最近任务实际状态（成功不等于送达）'])
+            memory=f.remember('这是需要删除的明确原话')
+            f.command('/forget '+memory.split('（')[1].split('）')[0])
+            self.assertEqual(context(f,'刚才的任务')['最近任务实际状态（成功不等于送达）'],[])
+            self.assertIn('old answer',f.command('/result old'));f.close()
+    def test_priority_pause_cancels_old_generation_without_waiting_for_its_reply(self):
+        with tempfile.TemporaryDirectory() as home:
+            now=[1793930400];f=Fish(home,clock=lambda:now[0]);tables(f)
+            with f.db:f.db.execute("INSERT INTO channel_binding VALUES (1,'a','s',0)")
+            receive=lambda message,text:inbound(f,self.event(message,text))
+            class Model:
+                ready=True
+                cancelled=staticmethod(lambda:False)
+                def reply(self,messages):
+                    result=receive('two','/pause')
+                    assert '暂停' in result
+                    assert self.cancelled()
+                    raise ModelError('cancelled')
+            f.model=Model();receive('one','说个长一点的故事');now[0]+=2
+            self.assertEqual(step(f,lambda *a,**k:self.fail('sent superseded reply')),'superseded')
+            self.assertFalse(f.model.cancelled());f.close()
+    def test_old_binding_queue_does_not_block_new_approved_identity(self):
+        with tempfile.TemporaryDirectory() as home:
+            now=[1793930400];f=Fish(home,clock=lambda:now[0]);tables(f)
+            with f.db:f.db.execute("INSERT INTO channel_binding VALUES (1,'a','s',0)")
+            for n in range(12):inbound(f,self.event(str(n),'旧身份待处理文字'))
+            with f.db:f.db.execute("UPDATE channel_binding SET sender='new'")
+            inbound(f,self.event('new','/tasks',sender='new'));now[0]+=2
+            import subprocess
+            result=step(f,lambda *a,**k:subprocess.CompletedProcess('send',0,'{}',''))
+            self.assertEqual(result,'accepted')
+            self.assertEqual(f.db.execute("SELECT count(*) FROM conversation_inbox WHERE state='identity_changed'").fetchone()[0],12);f.close()

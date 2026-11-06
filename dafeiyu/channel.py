@@ -58,8 +58,9 @@ def inbound(fish, event):
         if text.startswith('大肥鱼 '): text=text[len('大肥鱼 '):].strip()
         try:
             if event.get('buffer_text') is True and not media:
-                from .conversation import enqueue
-                return enqueue(fish,key,account,sender,text)
+                from .conversation import enqueue,immediate,barrier
+                if not immediate(text):return enqueue(fish,key,account,sender,text)
+                barrier(fish,key,account,sender)
             if media and any(isinstance(item,dict) and str(item.get('mime','')).startswith('video/') for item in media):
                 from .media import store_video
                 path=store_video(fish.home,media)
