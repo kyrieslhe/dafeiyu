@@ -125,22 +125,16 @@ def read(fish,site,goal,identifier):
 def choose(fish,identifier):
     row=fish.db.execute("SELECT value FROM settings WHERE key='platform_reading'").fetchone()
     if row and row[0]=='off':return None
-    # Watch mode favors Bilibili; other public interests still get exploration turns.
-    number=sum(identifier.encode())
     from .watching import enabled
+    if not enabled(fish) or sum(identifier.encode())%2:return None
     from .nasa_video import keyword
     from .sharing import public_goal
     from .noaa_video import relevant
     goal=public_goal(fish,identifier,'')
-    science=enabled(fish) and keyword(goal,identifier)
-    official='noaa' if enabled(fish) and relevant(goal) else ('nasa' if science else None)
-    if enabled(fish) and number%2==0:site=official if official and number%4==0 else 'bilibili'
-    elif number%3:return None
-    else:site=('bilibili','douyin')[(number//3)%2]
-    def cooling(candidate):return fish.db.execute("SELECT 1 FROM platform_visits WHERE site=? AND state IN ('unavailable','no_public_entry','sample_unavailable') AND created>?",(candidate,fish.clock()-6*3600)).fetchone()
-    if cooling(site):
-        if site=='bilibili' and official and not cooling(official):site=official
-        else:return None
+    site='noaa' if relevant(goal) else ('nasa' if keyword(goal,identifier) else None)
+    if not site:return None
+    if fish.db.execute("SELECT 1 FROM platform_visits WHERE site=? AND state IN ('unavailable','no_public_entry','sample_unavailable') AND created>?",(site,fish.clock()-6*3600)).fetchone():return None
+
     return site
 
 
@@ -149,7 +143,7 @@ def command(fish,argument):
         with fish.db:fish.db.execute("INSERT OR REPLACE INTO settings VALUES ('platform_reading',?)",(argument,))
     elif argument:raise ValueError('用法：/platforms、/platforms on 或 off')
     row=fish.db.execute("SELECT value FROM settings WHERE key='platform_reading'").fetchone()
-    return {'enabled':not row or row[0]=='on','mode':'anonymous_read_only','sites':list(SITES),'visits':fish.rows('SELECT site,url,state,created FROM platform_visits ORDER BY id DESC LIMIT 10'),'note':'没有登录、评论、私信、关注或完整视频观看。'}
+    return {'enabled':not row or row[0]=='on','mode':'anonymous_read_only','sites':list(SITES),'automatic_sites':['noaa','nasa'],'visits':fish.rows('SELECT site,url,state,created FROM platform_visits ORDER BY id DESC LIMIT 10'),'note':'没有登录、评论、私信、关注或完整视频观看。'}
 
 
 def cleanup(fish):
