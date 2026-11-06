@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.0 — 2026-11-06 · Preview
+
+- Selective source-backed sharing, recorded content choices, opt-in bounded new interests and dated actual-day activity, without inferred personal profiles.
+- Anonymous NASA/NOAA clip catalogues, bounded download, networkless frame/audio sampling, offline language detection and one-call recommendation. Bilibili playback remains restricted; Douyin playback is not claimed.
+- Voice transcripts join text/image turns with actions disabled, interruption handling and safe downgrade protection.
+- Peer-linked accepted-share follow-ups, reminder priority and structured send outcomes that prevent false spoken history or blind retries.
+- Feed-first unread bodies, bounded fallback, private failure evidence and automatic-task deadlines; bounded optional chat background and priority memory.
+- Video pause checkpoints, pending automatic notice suppression and actual capability instructions.
+
+Validation: 248 default Python checks pass (10 optional skipped), with ten required protected CI checks. Real official clips, local TTS/ASR and native Codex were verified separately from simulated platform sending. No new real WeChat test messages were sent. Actual media delivery and long-term naturalness still require ordinary use; Mac sleep/offline limits remain.
+
 ## 0.7.0 — 2026-11-06 · Preview
 
 - Durable text/image turn batching, semantic bubbles, prompt cancellation on new input, priority controls, and five-minute private image follow-ups.
