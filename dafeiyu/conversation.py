@@ -1,5 +1,6 @@
 """Durable text bursts and paced replies, separate from the serial gateway and research worker."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -25,8 +26,18 @@ def enqueue(fish,key,account,sender,text):
     return ''
 
 
-def bubbles(text):
+def immediate(text):
+    return text in ('/pause','/resume','/life off','/platforms off','暂停自主任务','继续') or text.startswith(('/cancel ','/quiet '))
+
+
+def barrier(fish,key,account,sender):
+    initialize(fish)
+    with fish.db:fish.db.execute("INSERT OR IGNORE INTO conversation_inbox(inbound_id,account,sender,content,state,created) VALUES (?,?,?,'','control',?)",(key,account,sender,fish.clock()))
+
+
+def bubbles(text,goal=''):
     # Paragraphs express semantic boundaries; preserve code, lists and long explanations.
+    if re.search('正式|别卖萌|不要卖萌|一次发完|不要分条|不要分段',goal):return [text]
     if len(text)>900 or '```' in text or re.search(r'(?m)^\s*(?:[-*]|\d+[.)]) ',text):return [text]
     parts=[p.strip() for p in text.split('\n\n') if p.strip()]
     if 1<len(parts)<=3:return parts
@@ -41,10 +52,14 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
         fish.db.execute("DELETE FROM conversation_inbox WHERE created<?",(now-30*86400,))
         binding=fish.db.execute('SELECT * FROM channel_binding WHERE singleton=1').fetchone()
         if not binding:return
+        fish.db.execute("UPDATE conversation_inbox SET state='identity_changed',content='',reply=NULL WHERE state='queued' AND (account!=? OR sender!=?)",(binding['account'],binding['sender']))
+        fish.db.execute("UPDATE inbound_stats SET finished=?,outcome='rejected' WHERE finished IS NULL AND id IN (SELECT inbound_id FROM conversation_inbox WHERE state='identity_changed')",(now,))
         rows=fish.rows("SELECT * FROM conversation_inbox WHERE state='queued' ORDER BY id LIMIT 12")
         if not rows:return
         # Wait for a quiet gap, but bound waiting when someone sends continuously.
-        if now-rows[-1]['created']<1.8 and now-rows[0]['created']<8:return
+        recent=fish.db.execute("SELECT count(DISTINCT claimed) FROM conversation_inbox WHERE state='superseded' AND claimed>?",(now-60,)).fetchone()[0]
+        gap=min(4,1.8+.6*min(4,recent))
+        if now-rows[-1]['created']<gap and now-rows[0]['created']<8:return
         rows=[r for r in rows if r['account']==binding['account'] and r['sender']==binding['sender']]
         if not rows:return
         chosen=[];size=0
@@ -55,30 +70,43 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
         ids=[r['id'] for r in chosen];marks=','.join('?' for _ in ids)
         changed=fish.db.execute("UPDATE conversation_inbox SET state='working',claimed=? WHERE state='queued' AND id IN ("+marks+')',[now]+ids).rowcount
         if changed!=len(ids):return
+    from .relationship import generation
+    started_generation=generation(fish)
+    reset_command=chosen[0]['content'].split(' ',1)[0] in ('/clear','/forget','忘记')
     before=fish.db.execute('SELECT coalesce(max(id),0) FROM messages').fetchone()[0]
     before_episode=fish.db.execute('SELECT coalesce(max(id),0) FROM episodes').fetchone()[0]
-    try:reply=fish.command('\n'.join(r['content'] for r in chosen))
-    except (ValueError,ModelError):reply='鱼脑袋这次没接上，暂时没能生成回复。你可以稍后再试。'
-    except Exception:reply='本鱼这次处理失败了，请稍后再试。'
-    if not isinstance(reply,str):reply=json.dumps(reply,ensure_ascii=False)
     def current():
         active=fish.db.execute('SELECT * FROM channel_binding WHERE singleton=1').fetchone()
         existing=fish.db.execute("SELECT 1 FROM conversation_inbox WHERE id=? AND state IN ('working','sending')",(ids[0],)).fetchone()
-        newer=fish.db.execute("SELECT 1 FROM conversation_inbox WHERE id>? AND state='queued'",(ids[-1],)).fetchone()
+        newer=fish.db.execute("SELECT 1 FROM conversation_inbox WHERE id>? AND state IN ('queued','control') AND account=? AND sender=?",(ids[-1],binding['account'],binding['sender'])).fetchone()
+        if not reset_command and generation(fish)!=started_generation:return False
         return existing and active and active['account']==binding['account'] and active['sender']==binding['sender'] and not newer
+    previous_cancel=getattr(fish.model,'cancelled',None)
+    if previous_cancel is not None:fish.model.cancelled=lambda:previous_cancel() or not current()
+    try:reply=fish.command('\n'.join(r['content'] for r in chosen))
+    except (ValueError,ModelError):reply='鱼脑袋这次没接上，暂时没能生成回复。你可以稍后再试。'
+    except Exception:reply='本鱼这次处理失败了，请稍后再试。'
+    finally:
+        if previous_cancel is not None:fish.model.cancelled=previous_cancel
+    if not isinstance(reply,str):reply=json.dumps(reply,ensure_ascii=False)
     if not current():
         with fish.db:
             fish.db.execute("UPDATE conversation_inbox SET state='superseded' WHERE id IN ("+marks+')',ids)
             for row in chosen:
                 fish.db.execute("UPDATE inbound SET state='completed',reply=NULL WHERE id=?",(row['inbound_id'],))
                 fish.db.execute("UPDATE inbound_stats SET finished=?,outcome='superseded' WHERE id=?",(fish.clock(),row['inbound_id']))
-            # Keep the user's actual text, but never retain an unsent answer as spoken history.
+            # Preserve the original user input even when native cancellation prevented chat() from saving it.
+            original='\n'.join(row['content'] for row in chosen)
+            keep_input=not reset_command and generation(fish)==started_generation and not original.startswith('/')
+            if keep_input and not fish.db.execute("SELECT 1 FROM messages WHERE id>? AND role='user' AND content=?",(before,original)).fetchone():fish.db.execute("INSERT INTO messages(role,content,created) VALUES ('user',?,?)",(original,fish.clock()))
+            # Never retain an unsent answer as spoken history.
             fish.db.execute("DELETE FROM messages WHERE id>? AND role='assistant'",(before,))
             fish.db.execute("DELETE FROM episodes WHERE id>? AND kind='conversation'",(before_episode,))
+            if keep_input:fish.db.execute("INSERT OR IGNORE INTO episodes(source,kind,content,created) VALUES (?,'conversation',?,?)",('burst-input:'+hashlib.sha256(chosen[0]['inbound_id'].encode()).hexdigest(),'用户原话（此前没有发出回复）：'+original[:1000],fish.clock()))
         return 'superseded'
     with fish.db:fish.db.execute("UPDATE conversation_inbox SET state='sending',reply=? WHERE id IN ("+marks+')',[reply]+ids)
     state='accepted';sent=[]
-    for index,part in enumerate(bubbles(reply)):
+    for index,part in enumerate(bubbles(reply,'\n'.join(row['content'] for row in chosen))):
         if index:
             sleep(min(2.5,.6+len(part)/100))
             if not current():state='interrupted';break

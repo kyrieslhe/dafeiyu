@@ -20,7 +20,9 @@ INSTRUCTIONS='''你是大肥鱼。请按给定 JSON schema 返回自然回复或
 动作执行结果由应用给出，你不能伪造工具成功。只选择一个动作，不要为了显得主动给普通聊天创建任务。'''
 
 
-def route(fish,text,messages,images=None,allow_actions=True):
+def route(fish,text,messages,images=None,allow_actions=True,generation=None):
+    from .relationship import generation as current_generation
+    expected=current_generation(fish) if generation is None else generation
     context=[{'role':'system','content':INSTRUCTIONS}]+messages
     proposal=fish.model.plan(context,images=images) if images else fish.model.plan(context)
     if not isinstance(proposal,dict) or set(proposal)!=set(SCHEMA['required']) or not all(isinstance(v,str) for v in proposal.values()):
@@ -28,6 +30,13 @@ def route(fish,text,messages,images=None,allow_actions=True):
     name=proposal['action'];argument=proposal['argument'].strip()
     if name not in SCHEMA['properties']['action']['enum'] or len(argument)>6000 or len(proposal['reply'])>12000:
         raise ModelError('模型动作超出允许范围；未执行操作。')
+    with fish.db:
+        fish.db.execute("UPDATE settings SET value=value WHERE key='paused'")
+        if current_generation(fish)!=expected:raise ModelError('聊天上下文已重置，旧动作已取消。')
+        return execute(fish,text,proposal,name,argument,allow_actions)
+
+
+def execute(fish,text,proposal,name,argument,allow_actions):
     if not allow_actions and name not in ('reply','recall','tasks','research','browse'):
         return '我听到了，但语音转写可能有误。涉及记忆、提醒或修改项目，请用文字确认具体内容。'
     if name=='reply':
