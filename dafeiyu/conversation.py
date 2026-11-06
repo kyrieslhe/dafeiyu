@@ -32,7 +32,7 @@ def enqueue(fish,key,account,sender,text,images=None,transcribed=False):
 
 
 def immediate(text):
-    return text in ('/pause','/resume','/life off','/platforms off','暂停自主任务','继续') or text.startswith(('/cancel ','/quiet '))
+    return text in ('/pause','/resume','/life off','/platforms off','/growth off','暂停自主任务','继续') or text.startswith(('/cancel ','/quiet '))
 
 
 def barrier(fish,key,account,sender):
