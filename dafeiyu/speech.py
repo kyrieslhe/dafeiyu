@@ -10,15 +10,17 @@ import uuid
 ROOT=Path(__file__).resolve().parent.parent
 
 
-def transcribe(path,runner=subprocess.run):
+def transcribe(path,runner=subprocess.run,language='zh'):
+    if language not in ('zh','en',None):raise ValueError('不支持该语音语言设置。')
     python=ROOT/'var/runtime/speech/bin/python';model=ROOT/'var/runtime/speech-model/model.bin'
     if not python.exists() or not model.exists():raise ValueError('离线语音识别尚未安装，请在本机运行 scripts/setup_speech.py，或用微信转文字后发送。')
     env={'PATH':os.defpath,'HF_HOME':str(ROOT/'var/runtime/speech-cache'),'HF_HUB_OFFLINE':'1','HF_HUB_DISABLE_TELEMETRY':'1','HF_HUB_DISABLE_IMPLICIT_TOKEN':'1','OMP_NUM_THREADS':'2'}
     try:
-        result=runner([str(python),str(ROOT/'scripts/transcribe.py'),path],env=env,capture_output=True,text=True,timeout=35)
+        result=runner([str(python),str(ROOT/'scripts/transcribe.py'),path,'--language',language or 'auto'],env=env,capture_output=True,text=True,timeout=35)
         if result.returncode==2:raise ValueError('本鱼正在听另一条语音，请稍后再发。')
         if result.returncode:raise ValueError('本机语音识别失败；未上传音频，请用微信转文字后重发。')
         value=json.loads(result.stdout)
+        if value.get('uncertain_language') is True:raise ValueError('音轨的语言或语音不够清楚，未采用不可靠转写。')
         text=value.get('text')
         if not isinstance(text,str) or not text.strip():raise ValueError('这条语音没有识别到清楚的文字，请重说一次。')
         return text.strip()[:3000]

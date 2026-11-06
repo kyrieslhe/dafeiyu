@@ -84,7 +84,7 @@ def analyze(model,request,home,identifier):
         audio.chmod(0o600)
         try:
             from .speech import transcribe
-            transcript=transcribe(str(audio));audio_note='仅转写前 '+str(result['audio_seconds'])+' 秒音轨，可能有识别错误。'
+            transcript=transcribe(str(audio),language=None);audio_note='自动识别语言，仅转写前 '+str(result['audio_seconds'])+' 秒音轨，可能有识别错误。'
         except ValueError as error:audio_note='音轨未完成转写：'+str(error)
     if not hasattr(model,'codex_reply'):raise VideoError('视频采样理解需要 Codex 图像输入。')
     message={'question':request.get('question','概括这段短视频的可见内容。'),'duration_seconds':result['duration_seconds'],
