@@ -7,7 +7,10 @@ from dafeiyu.watching import sampled
 
 class WatchPause(unittest.TestCase):
     def setUp(self):
-        self.tmp=tempfile.TemporaryDirectory();self.f=Fish(self.tmp.name,clock=lambda:1793930400);self.f.command('/watch on')
+        class Backend:
+            ready=True
+            cancelled=staticmethod(lambda:False)
+        self.tmp=tempfile.TemporaryDirectory();self.f=Fish(self.tmp.name,Backend(),clock=lambda:1793930400);self.f.command('/watch on')
     def tearDown(self):self.f.close();self.tmp.cleanup()
     def test_disable_during_sampling_cancels_and_cleans_without_stale_choice(self):
         media=self.f.home/'test.mp4';media.write_bytes(b'fixture');original=self.f.model.cancelled
