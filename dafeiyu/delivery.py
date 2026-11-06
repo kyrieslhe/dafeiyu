@@ -33,7 +33,7 @@ def deliver(fish, runner=subprocess.run):
             claimed=fish.db.execute("UPDATE deliveries SET state='sending',updated=? WHERE outbox_id=? AND state='waiting_context'",(now,row['id'])).rowcount
         if not claimed:return None
     script=Path(__file__).resolve().parent.parent/'scripts/openclaw'
-    message=(('🐳 任务 '+row['task_id']+'\n') if row['kind'] not in ('explore','research') else '')+row['content'][:2500]
+    message=(('🐳 任务 '+row['task_id']+'\n') if row['kind'] not in ('explore','research','platform') else '')+row['content'][:2500]
     if len(row['content'])>2500:message+='\n完整成果：大肥鱼 /result '+row['task_id']
     command=[str(script),'message','send','--channel','openclaw-weixin','--account',binding['account'],'--target',binding['sender'],'--message',message,'--json']
     asset=fish.db.execute('SELECT path FROM task_assets WHERE task_id=?',(row['task_id'],)).fetchone()

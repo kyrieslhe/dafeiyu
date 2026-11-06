@@ -42,6 +42,8 @@ def main():
                     cleanup_browser(fish)
                     from .video import cleanup as cleanup_video
                     cleanup_video(fish)
+                    from .platforms import cleanup as cleanup_platforms
+                    cleanup_platforms(fish)
                     backup_check=time.monotonic()+60
                 if args.once:
                     break
