@@ -20,6 +20,7 @@ def enabled(fish):
 
 
 def propose(fish,row,metadata):
+    if getattr(fish.model,'provider','codex')!='codex':return None
     if not enabled(fish) or metadata.get('recommend') is not True or not hasattr(fish.model,'codex_reply'):return None
     if fish.db.execute('SELECT count(*) FROM interests').fetchone()[0]>=8:return None
     if fish.db.execute('SELECT count(*) FROM discovery_choices WHERE created>?',(fish.clock()-30*86400,)).fetchone()[0]<2:return None

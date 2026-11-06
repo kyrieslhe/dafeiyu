@@ -69,3 +69,5 @@ class Growth(unittest.TestCase):
         self.f.model.codex_reply=stop;value=propose(self.f,self.row,self.meta)
         with self.f.db:apply(self.f,self.row,value)
         self.assertFalse(enabled(self.f));self.assertEqual(len(self.f.command('/interest')),1)
+    def test_other_provider_never_implicitly_switches_to_codex(self):
+        self.f.model.provider='api';self.assertIsNone(propose(self.f,self.row,self.meta));self.assertEqual(self.calls,[])
