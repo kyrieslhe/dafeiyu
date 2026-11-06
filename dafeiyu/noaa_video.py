@@ -51,11 +51,14 @@ def read(fish,goal,identifier):
     if automatic:candidates=[url for url in candidates if not fish.db.execute('SELECT 1 FROM video_choices WHERE url=? AND created>?',(url,fish.clock()-30*86400)).fetchone()]
     if not candidates:raise ModelError('没有新的官方海洋短片候选，未重复推荐。')
     for page in candidates[:3]:
+        if not enabled(fish):raise ModelError('短片探索已关闭。')
         if getattr(fish.model,'cancelled',lambda:False)():raise ModelError('海洋短片探索已取消。')
         try:
             info=resolve(page);report,metadata=sampled(fish,page,goal,identifier,info=info)
+            if not enabled(fish):raise ModelError('短片探索已关闭。')
             with fish.db:fish.db.execute('INSERT INTO platform_visits VALUES (NULL,?,?,?,?)',('noaa',page,'sampled_clip',fish.clock()))
             return report,metadata
         except (ModelError,ValueError):continue
+    if not enabled(fish):raise ModelError('短片探索已关闭。')
     with fish.db:fish.db.execute('INSERT INTO platform_visits VALUES (NULL,?,?,?,?)',('noaa','','sample_unavailable',fish.clock()))
     raise ModelError('没有取得可分析的海洋短片，未伪造观看。')

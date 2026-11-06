@@ -64,6 +64,7 @@ def record(fish,row,metadata):
 def reset(fish):
     fish.db.execute('DELETE FROM discovery_choices')
     fish.db.execute('DELETE FROM video_choices')
+    fish.db.execute('DELETE FROM video_runs')
     if fish.db.execute("SELECT 1 FROM sqlite_master WHERE name='delivery_peers'").fetchone():fish.db.execute('DELETE FROM delivery_peers')
     fish.db.execute("UPDATE tasks SET state='cancelled',error='聊天背景已清空，旧探索已取消。' WHERE kind='explore' AND (id LIKE 'curious-%' OR id LIKE 'life-%') AND state IN ('queued','running')")
     # Autonomous summaries may now contain a quote: keep reports accessible explicitly,

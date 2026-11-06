@@ -474,7 +474,9 @@ class Fish:
                         for url in metadata.get('feed_entries',[]):self.db.execute('INSERT OR REPLACE INTO feed_reads VALUES (?,?,?)',(url,row['id'],self.clock()))
                         self.db.execute('INSERT OR IGNORE INTO exploration_notes VALUES (?,?,?,?,?)',(row['id'],row['goal'][:200],share,json.dumps([source['url'] for source in metadata['sources']]),self.clock()))
                     from .curiosity import should_share
-                    if not (row['kind']=='explore' and metadata.get('recommend') is False) and should_share(self,row['id'],share):self.db.execute('INSERT OR IGNORE INTO outbox(task_id,content) VALUES (?,?)', (row['id'], share))
+                    from .watching import enabled as watching_enabled
+                    video_paused=automatic_exploration and metadata.get('scope')=='sampled_clip_not_full_view' and not watching_enabled(self)
+                    if not video_paused and not (row['kind']=='explore' and metadata.get('recommend') is False) and should_share(self,row['id'],share):self.db.execute('INSERT OR IGNORE INTO outbox(task_id,content) VALUES (?,?)', (row['id'], share))
                     self.db.execute('INSERT OR IGNORE INTO episodes(source,kind,content,created) VALUES (?,?,?,?)',('task:'+row['id'], 'code_candidate' if waiting else row['kind'], '任务 '+row['id']+' 实际结果：'+result[:1200],self.clock()))
         except Exception as error:
             safe = str(error) if isinstance(error, (ModelError, ValueError)) or error.__class__.__name__ in ('ResearchError', 'CodingError') else '任务处理失败（%s），未产生结果。' % type(error).__name__

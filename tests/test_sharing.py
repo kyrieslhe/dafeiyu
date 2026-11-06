@@ -107,6 +107,7 @@ class Sharing(unittest.TestCase):
         self.assertEqual(taste(self.f)['recent'],[])
     def test_reset_during_video_judgment_cannot_restore_old_choice(self):
         from dafeiyu.watching import sampled
+        self.f.command('/watch on')
         media=self.f.home/'clip.mp4';media.write_bytes(b'fixture')
         def judged(*args,**kwargs):
             self.f.command('/clear');return 'old',{'recommend':True,'recommend_reason':'旧背景'}
