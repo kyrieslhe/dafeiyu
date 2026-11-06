@@ -18,6 +18,8 @@ def initialize(fish):
 def enqueue(fish,key,account,sender,text):
     initialize(fish)
     with fish.db:
+        from .presence import observe
+        observe(fish,text)
         fish.db.execute("INSERT OR IGNORE INTO conversation_inbox(inbound_id,account,sender,content,state,created) VALUES (?,?,?,?,'queued',?)",(key,account,sender,text,fish.clock()))
         fish.db.execute("UPDATE inbound SET state='buffered' WHERE id=?",(key,))
     return ''
