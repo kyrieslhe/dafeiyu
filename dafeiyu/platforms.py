@@ -69,12 +69,26 @@ def read(fish,site,goal,identifier):
         return result
     if not valid_urls(urls):
         if not hasattr(fish.model,'search'):raise ModelError('需要提供一个公开视频页面地址。')
-        found=fish.model.search([{'role':'user','content':'仅搜索'+SITES[site][0]+('（也可用 jingxuan.douyin.com/m/video/ 公开页）' if site=='douyin' else '')+'上符合以下兴趣的一个公开视频条目，给出完整 https://'+SITES[site][1]+'/video/ 地址和标题。不要登录或执行命令。目标：'+goal}])
+        found=fish.model.search([{'role':'user','content':'仅搜索'+SITES[site][0]+('（也可用 jingxuan.douyin.com/m/video/ 公开页）' if site=='douyin' else '')+'上符合以下兴趣的最多三个公开视频条目，优先两分钟以内的短片，给出完整 https://'+SITES[site][1]+'/video/ 地址和标题。不要登录或执行命令。目标：'+goal}])
         urls=re.findall(r'https://[^\s<>\]\)"\u3002]+',found)
     candidates=valid_urls(urls)
     if not candidates:
         with fish.db:fish.db.execute('INSERT INTO platform_visits(site,url,state,created) VALUES (?,?,?,?)',(site,'','no_public_entry',fish.clock()))
         raise ModelError('没有找到可验证的公开视频条目。')
+    from .watching import enabled,sampled
+    watching_auto=enabled(fish) and identifier.startswith(('curious-','life-'))
+    if watching_auto:
+        candidates=[url for url in dict.fromkeys(candidates) if not fish.db.execute('SELECT 1 FROM video_choices WHERE url=? AND created>?',(url,fish.clock()-30*86400)).fetchone()]
+        if not candidates:raise ModelError('近期已分析这些候选，跳过重复视频。')
+    if site=='bilibili' and enabled(fish) and hasattr(fish.model,'codex_reply'):
+        for candidate in list(dict.fromkeys(candidates))[:3]:
+            if getattr(fish.model,'cancelled',lambda:False)():raise ModelError('视频探索已取消。')
+            try:
+                report,metadata=sampled(fish,candidate,goal,identifier)
+                with fish.db:fish.db.execute('INSERT INTO platform_visits(site,url,state,created) VALUES (?,?,?,?)',(site,candidate,'sampled_clip',fish.clock()))
+                return report,metadata
+            except (ModelError,ValueError):continue
+        with fish.db:fish.db.execute('INSERT INTO platform_visits(site,url,state,created) VALUES (?,?,?,?)',(site,candidates[0],'sample_unavailable',fish.clock()))
     url=candidates[0]
     try:source=page_source(site,url,fish.home,identifier,getattr(fish.model,'cancelled',lambda:False))
     except Exception:
@@ -85,17 +99,21 @@ def read(fish,site,goal,identifier):
     report=re.sub(r'\[([^\]]+)\]\((https?://[^)]+)\)',lambda match:match.group(0) if match.group(2)==url else match.group(1)+'（未访问链接已移除）',report)
     report+='\n\n阅读范围：仅公开标题、简介/可见文字；没有看完视频。\n来源：'+url
     with fish.db:fish.db.execute('INSERT INTO platform_visits(site,url,state,created) VALUES (?,?,?,?)',(site,url,'read_text_only',fish.clock()))
-    return report,{'sources':[source],'platform':site,'scope':'text_only_not_video','complete_video_view':False}
+    metadata={'sources':[source],'platform':site,'scope':'text_only_not_video','complete_video_view':False}
+    if watching_auto:metadata['recommend']=False
+    return report,metadata
 
 
 def choose(fish,identifier):
     row=fish.db.execute("SELECT value FROM settings WHERE key='platform_reading'").fetchone()
     if row and row[0]=='off':return None
-    # At most about one in three automatic starts; keeps other interests in the mix.
+    # Watch mode favors Bilibili; other public interests still get exploration turns.
     number=sum(identifier.encode())
-    if number%3:return None
-    site=('bilibili','douyin')[(number//3)%2]
-    if fish.db.execute("SELECT 1 FROM platform_visits WHERE site=? AND state IN ('unavailable','no_public_entry') AND created>?",(site,fish.clock()-6*3600)).fetchone():return None
+    from .watching import enabled
+    if enabled(fish) and number%2==0:site='bilibili'
+    elif number%3:return None
+    else:site=('bilibili','douyin')[(number//3)%2]
+    if fish.db.execute("SELECT 1 FROM platform_visits WHERE site=? AND state IN ('unavailable','no_public_entry','sample_unavailable') AND created>?",(site,fish.clock()-6*3600)).fetchone():return None
     return site
 
 

@@ -93,6 +93,7 @@ class Model:
         except ValueError:raise ModelError('模型动作格式异常；未执行操作。') from None
 
     def codex_reply(self, messages, search=False, schema=None, images=None):
+        if getattr(self,'cancelled',lambda:False)():raise ModelError('任务已取消或额度保护已暂停模型调用。')
         if not self.codex:
             raise ModelError('找不到 Codex CLI；请设置 DAFEIYU_CODEX_BIN 为可执行文件路径。')
         # Official CLI owns authentication; never read, copy or export its credentials.
@@ -202,6 +203,8 @@ class Fish:
         initialize_feeds(self)
         from .platforms import initialize as initialize_platforms
         initialize_platforms(self)
+        from .watching import initialize as initialize_watching
+        initialize_watching(self)
         life.initialize(self)
         curiosity.initialize(self)
 
@@ -435,7 +438,7 @@ class Fish:
                         for url in metadata.get('feed_entries',[]):self.db.execute('INSERT OR REPLACE INTO feed_reads VALUES (?,?,?)',(url,row['id'],self.clock()))
                         self.db.execute('INSERT OR IGNORE INTO exploration_notes VALUES (?,?,?,?,?)',(row['id'],row['goal'][:200],share,json.dumps([source['url'] for source in metadata['sources']]),self.clock()))
                     from .curiosity import should_share
-                    if should_share(self,row['id'],share):self.db.execute('INSERT OR IGNORE INTO outbox(task_id,content) VALUES (?,?)', (row['id'], share))
+                    if not (row['kind']=='explore' and metadata.get('recommend') is False) and should_share(self,row['id'],share):self.db.execute('INSERT OR IGNORE INTO outbox(task_id,content) VALUES (?,?)', (row['id'], share))
                     self.db.execute('INSERT OR IGNORE INTO episodes(source,kind,content,created) VALUES (?,?,?,?)',('task:'+row['id'], 'code_candidate' if waiting else row['kind'], '任务 '+row['id']+' 实际结果：'+result[:1200],self.clock()))
         except Exception as error:
             safe = str(error) if isinstance(error, (ModelError, ValueError)) or error.__class__.__name__ in ('ResearchError', 'CodingError') else '任务处理失败（%s），未产生结果。' % type(error).__name__

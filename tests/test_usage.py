@@ -31,7 +31,7 @@ class UsageTests(unittest.TestCase):
             self.assertEqual(model.codex_reply([{'role':'user','content':'hello'}]),'hello')
         self.assertEqual(model.calls[0]['usage'],{'input_tokens':7,'output_tokens':2})
     def test_cancel_terminates_process_group_and_records_unknown_usage(self):
-        model=Model();model.codex='fake-codex';model.cancelled=lambda:True
+        model=Model();model.codex='fake-codex';model.cancelled=Mock(side_effect=[False,True])
         child=Mock();child.pid=999999
         child.communicate.side_effect=[subprocess.TimeoutExpired('fake',.25),('','')]
         with patch('dafeiyu.core.subprocess.Popen',return_value=child),patch('dafeiyu.core.os.killpg') as kill:
