@@ -57,6 +57,7 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
         if changed!=len(ids):return
     before=fish.db.execute('SELECT coalesce(max(id),0) FROM messages').fetchone()[0]
     before_episode=fish.db.execute('SELECT coalesce(max(id),0) FROM episodes').fetchone()[0]
+    fish.reply_asset=None
     try:reply=fish.command('\n'.join(r['content'] for r in chosen))
     except (ValueError,ModelError):reply='鱼脑袋这次没接上，暂时没能生成回复。你可以稍后再试。'
     except Exception:reply='本鱼这次处理失败了，请稍后再试。'
@@ -77,15 +78,21 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
             fish.db.execute("DELETE FROM episodes WHERE id>? AND kind='conversation'",(before_episode,))
         return 'superseded'
     with fish.db:fish.db.execute("UPDATE conversation_inbox SET state='sending',reply=? WHERE id IN ("+marks+')',[reply]+ids)
+    asset=getattr(fish,'reply_asset',None)
     state='accepted';sent=[]
     for index,part in enumerate(bubbles(reply)):
         if index:
             sleep(min(2.5,.6+len(part)/100))
             if not current():state='interrupted';break
         try:
-            result=runner([str(Path(__file__).resolve().parent.parent/'scripts/openclaw'),'message','send','--channel','openclaw-weixin','--account',binding['account'],'--target',binding['sender'],'--message',part,'--json'],capture_output=True,text=True,timeout=45)
+            command=[str(Path(__file__).resolve().parent.parent/'scripts/openclaw'),'message','send','--channel','openclaw-weixin','--account',binding['account'],'--target',binding['sender'],'--message',part,'--json']
+            if index==0 and asset:command+=['--media',str(asset)]
+            result=runner(command,capture_output=True,text=True,timeout=45)
             if result.returncode:state='delivery_unknown';break
             json.loads(result.stdout);sent.append(part)
+            if index==0 and asset:
+                from .expressions import accepted
+                accepted(fish)
         except (OSError,ValueError,subprocess.TimeoutExpired):state='delivery_unknown';break
     with fish.db:
         fish.db.execute('UPDATE conversation_inbox SET state=? WHERE id IN ('+marks+')',[state]+ids)

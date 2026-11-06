@@ -3,9 +3,10 @@ import json
 import re
 from .core import ModelError
 
-SCHEMA={'type':'object','properties':{'reply':{'type':'string'},'action':{'type':'string','enum':['reply','research','code','recall','tasks','remember','reminder','daily','diary','speak','browse']},'argument':{'type':'string'}},'required':['reply','action','argument'],'additionalProperties':False}
+SCHEMA={'type':'object','properties':{'reply':{'type':'string'},'action':{'type':'string','enum':['reply','research','code','recall','tasks','remember','reminder','daily','diary','speak','browse','express']},'argument':{'type':'string'}},'required':['reply','action','argument'],'additionalProperties':False}
 INSTRUCTIONS='''你是大肥鱼。请按给定 JSON schema 返回自然回复或一个受限动作。
 普通聊天 action=reply，reply 遵守下方性格设定，用大肥鱼的口吻直接聊天，argument 留空。不要因为需要输出 JSON 就写成客服语气或任务汇报；用户分享生活不等于请求创建任务。
+普通日常闲聊可偶尔 action=express，argument 仅 happy、curious、sleepy、cheer 四选一，reply 写可独立阅读的自然回复，不说已发送、看这张图等；应用按频率上限附上一张内置原创表情，限频时可能跳过附件。不为贴图吞掉用户的研究/提醒等实际请求；不输出任意文件路径。
 用户明确请求查询新信息或研究时，action=research，argument 是研究问题；应用会返回任务编号，不能说已经查完。
 用户请求修改项目时，action=code，argument 格式为「项目名 功能目标」；只生成候选与测试，不能自行审批。
 用户想回忆明确记忆时用 recall，argument 为检索词；查看任务用 tasks。
@@ -27,8 +28,12 @@ def route(fish,text,messages,images=None,allow_actions=True):
     name=proposal['action'];argument=proposal['argument'].strip()
     if name not in SCHEMA['properties']['action']['enum'] or len(argument)>6000 or len(proposal['reply'])>12000:
         raise ModelError('模型动作超出允许范围；未执行操作。')
-    if not allow_actions and name not in ('reply','recall','tasks','research','browse'):
+    if not allow_actions and name not in ('reply','recall','tasks','research','browse','express'):
         return '我听到了，但语音转写可能有误。涉及记忆、提醒或修改项目，请用文字确认具体内容。'
+    if name=='express':
+        from .expressions import prepare
+        fish.reply_asset=prepare(fish,argument)
+        return proposal['reply'].strip() or '本鱼冒个泡。🐳'
     if name=='reply':
         if not proposal['reply'].strip():raise ModelError('模型返回空回复。')
         return proposal['reply'].strip()

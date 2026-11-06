@@ -51,7 +51,7 @@ def cleanup(fish):
     """Generated audio is ephemeral (seven days), not part of encrypted reports."""
     root=fish.home/'media/outbound'
     if not root.exists() or root.is_symlink():return
-    for path in root.glob('*.wav'):
+    for path in list(root.glob('*.wav'))+list(root.glob('*.png')):
         if len(path.stem)!=32 or any(char not in '0123456789abcdef' for char in path.stem) or path.is_symlink():continue
         if path.stat().st_mtime>=fish.clock()-7*86400:continue
         sending=fish.db.execute("SELECT 1 FROM task_assets a JOIN outbox o ON o.task_id=a.task_id JOIN deliveries d ON d.outbox_id=o.id WHERE a.path=? AND d.state='sending'",(str(path),)).fetchone() if fish.db.execute("SELECT 1 FROM sqlite_master WHERE name='deliveries'").fetchone() else None
