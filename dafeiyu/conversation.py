@@ -140,8 +140,9 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
             if not current():state='interrupted';break
         try:
             result=runner([str(Path(__file__).resolve().parent.parent/'scripts/openclaw'),'message','send','--channel','openclaw-weixin','--account',binding['account'],'--target',binding['sender'],'--message',part,'--json'],capture_output=True,text=True,timeout=45)
-            if result.returncode:state='delivery_unknown';break
-            json.loads(result.stdout);sent.append(part)
+            from .send_outcome import outcome
+            if outcome(result)[0]!='accepted':state='delivery_unknown';break
+            sent.append(part)
         except (OSError,ValueError,subprocess.TimeoutExpired):state='delivery_unknown';break
     with fish.db:
         fish.db.execute('UPDATE conversation_inbox SET state=? WHERE id IN ('+marks+')',[state]+ids)
