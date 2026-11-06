@@ -162,8 +162,16 @@ def research(model, question, companion=False,feed_urls=None,seen_urls=None,disc
     elif explicit and not discover:urls=explicit
     else:
         if not hasattr(model,'search'):raise ResearchError('当前模型不支持联网搜索；请在问题中提供 HTTPS 来源。')
-        discovery=model.search([{'role':'user','content':'联网搜索以下问题，优先一手权威来源，给出最多四个可访问的 HTTPS 链接及简述。不要执行命令。问题：'+(search_question if search_question is not None else question)}])
+        discovery=model.search([{'role':'user','content':'联网搜索以下问题，优先一手权威来源，给出最多四个可访问的 HTTPS 链接及简述。不要执行命令。问题：'+(search_question if search_question is not None else question)+('。自主阅读不访问B站或抖音，使用其他一手来源。' if discover else '')}])
         urls=re.findall(r'https://[^\s<>\]\)"\u3002]+',discovery)
+    if discover:
+        allowed=[]
+        for url in urls:
+            host=(urlsplit(url).hostname or '').lower()
+            if any(host==domain or host.endswith('.'+domain) for domain in ('bilibili.com','b23.tv','douyin.com','iesdouyin.com')):
+                failures.append({'url':url,'error':'自主来源已切换，未读取该平台。'})
+            else:allowed.append(url)
+        urls=allowed
     for url in list(dict.fromkeys(urls))[:max(0,4-attempts)]:
         try:sources.append(retrieve(url))
         except ResearchError as error:

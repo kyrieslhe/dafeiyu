@@ -25,3 +25,15 @@ class WorkingSources(unittest.TestCase):
             f.command('/platforms off');self.assertIsNone(choose(f,key));f.command('/platforms on')
             with f.db:f.db.execute('INSERT INTO platform_visits VALUES(NULL,?,?,?,?)',('noaa','','sample_unavailable',f.clock()))
             self.assertIsNone(choose(f,key))
+    def test_general_automatic_research_also_skips_restricted_platform_links(self):
+        import json
+        from unittest.mock import patch
+        from dafeiyu.research import research
+        class Backend:
+            def search(self,messages):return 'https://www.bilibili.com/video/BV1oBJo6GE22 https://v.douyin.com/example https://example.org/source'
+            def codex_reply(self,*a,**k):return json.dumps({'report':'观察','recommend':True,'reason':'new'})
+        fetched=[]
+        def get(url):fetched.append(url);return {'url':url,'text':'public body','sha256':'fixture','retrieved_at':'now'}
+        with patch('dafeiyu.research.fetch',side_effect=get):
+            _,metadata=research(Backend(),'自然科学',companion=True,discover=True)
+        self.assertEqual(fetched,['https://example.org/source']);self.assertEqual(len(metadata['failures']),2)
