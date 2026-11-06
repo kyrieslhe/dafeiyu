@@ -198,6 +198,8 @@ class Fish:
         memory.initialize(self)
         from .interests import initialize as initialize_interests
         initialize_interests(self)
+        from .feeds import initialize as initialize_feeds
+        initialize_feeds(self)
         life.initialize(self)
         curiosity.initialize(self)
 
@@ -354,7 +356,10 @@ class Fish:
         try:
             if row['kind'] in ('research','explore'):
                 from .research import research
-                result, metadata = research(self.model, row['goal'],companion=True) if row['kind']=='explore' else research(self.model,row['goal'],companion=not any(term in row['goal'] for term in ('正式报告','详细报告','研究报告','不要卖萌','学术')))
+                if row['kind']=='explore':
+                    from .feeds import for_topic
+                    result,metadata=research(self.model,row['goal'],companion=True,feed_urls=for_topic(self,row['id'],row['goal']),seen_urls={r['url'] for r in self.rows('SELECT url FROM feed_reads')},discover=row['id'].startswith(('curious-','life-')))
+                else:result,metadata=research(self.model,row['goal'],companion=not any(term in row['goal'] for term in ('正式报告','详细报告','研究报告','不要卖萌','学术')))
             elif row['kind'] == 'browser':
                 from .browser import browse
                 result, metadata = browse(self.model, row['goal'], self.home, row['id'])
@@ -407,6 +412,7 @@ class Fish:
                         share=result.split('\n\n### 抓取记录')[0].strip()[:1800]
                         from .interests import complete as complete_interest
                         complete_interest(self,row['id'],result)
+                        for url in metadata.get('feed_entries',[]):self.db.execute('INSERT OR REPLACE INTO feed_reads VALUES (?,?,?)',(url,row['id'],self.clock()))
                         self.db.execute('INSERT OR IGNORE INTO exploration_notes VALUES (?,?,?,?,?)',(row['id'],row['goal'][:200],share,json.dumps([source['url'] for source in metadata['sources']]),self.clock()))
                     from .curiosity import should_share
                     if should_share(self,row['id'],share):self.db.execute('INSERT OR IGNORE INTO outbox(task_id,content) VALUES (?,?)', (row['id'], share))
