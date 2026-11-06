@@ -63,6 +63,16 @@ def inbound(fish, event):
                 from .presence import observe
                 with fish.db:observe(fish,text)
                 barrier(fish,key,account,sender)
+            if event.get('buffer_text') is True and media and not any(str(item.get('mime','')).startswith(('audio/','video/')) for item in media if isinstance(item,dict)):
+                if text.startswith('/'):raise ValueError('带图片时请用普通文字描述问题，管理命令请单独发送。')
+                from .media import store_images
+                from .conversation import enqueue
+                images=store_images(fish.home,media)
+                try:return enqueue(fish,key,account,sender,text,images=images)
+                except BaseException:
+                    from pathlib import Path
+                    for image in images:Path(image).unlink(missing_ok=True)
+                    raise
             if media and any(isinstance(item,dict) and str(item.get('mime','')).startswith('video/') for item in media):
                 from .media import store_video
                 path=store_video(fish.home,media)
