@@ -38,4 +38,8 @@ def complete(fish,identifier,report):
 
 
 def context(fish):
-    return fish.rows('SELECT topic,question,last_task,substr(summary,1,280) AS summary,depth,updated FROM interest_threads ORDER BY updated DESC LIMIT 2')
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    rows=fish.rows('SELECT topic,question,last_task,substr(summary,1,280) AS summary,depth,updated FROM interest_threads ORDER BY updated DESC LIMIT 2')
+    for row in rows:row['at']=datetime.fromtimestamp(row['updated'],ZoneInfo('Asia/Hong_Kong')).isoformat()
+    return rows

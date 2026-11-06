@@ -60,6 +60,12 @@ def command(fish,name,argument):
     if name=='/unpin':
         with fish.db:fish.db.execute('UPDATE memory_meta SET importance=1 WHERE memory_id=?',(int(argument),))
         return '已取消常驻。'
+    if name=='/day':
+        from .activity import day
+        return day(fish)
+    if name=='/growth':
+        from .growth import command as growth_command
+        return growth_command(fish,argument)
     if name=='/taste':
         from .sharing import taste
         return taste(fish)
@@ -105,12 +111,17 @@ def command(fish,name,argument):
             reject_secret(argument)
             with fish.db:
                 if fish.db.execute('SELECT count(*) FROM interests').fetchone()[0]>=10:raise ValueError('最多十个兴趣主题。')
+                from .memory import normalize
+                fish.db.execute('DELETE FROM interest_exclusions WHERE topic=?',(normalize(argument),))
                 fish.db.execute('INSERT OR IGNORE INTO interests(topic,created) VALUES (?,?)',(argument,fish.clock()))
         return fish.rows('SELECT * FROM interests ORDER BY id')
     if name=='/uninterest':
         with fish.db:
             row=fish.db.execute('SELECT topic FROM interests WHERE id=?',(int(argument),)).fetchone()
             if row:
+                from .memory import normalize
+                fish.db.execute('INSERT OR IGNORE INTO interest_exclusions VALUES (?)',(normalize(row['topic']),))
+                fish.db.execute('DELETE FROM interest_growth WHERE topic=?',(row['topic'],))
                 fish.db.execute('DELETE FROM discovery_choices WHERE topic=?',(row['topic'],))
                 fish.db.execute('DELETE FROM interest_threads WHERE topic=?',(row['topic'],))
                 fish.db.execute('DELETE FROM interest_steps WHERE topic=?',(row['topic'],))
@@ -141,7 +152,7 @@ def command(fish,name,argument):
     return None
 
 
-COMMANDS={'/taste','/watch','/platforms','/feeds','/quiet','/threads','/recall','/pin','/unpin','/timeline','/reflect','/reflections','/accept','/dismiss','/interest','/uninterest','/life','/explore','/discoveries'}
+COMMANDS={'/day','/growth','/taste','/watch','/platforms','/feeds','/quiet','/threads','/recall','/pin','/unpin','/timeline','/reflect','/reflections','/accept','/dismiss','/interest','/uninterest','/life','/explore','/discoveries'}
 
 
 def related(fish,query,budget=1800):

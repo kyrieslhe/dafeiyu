@@ -209,6 +209,8 @@ class Fish:
         initialize_sharing(self)
         life.initialize(self)
         curiosity.initialize(self)
+        from .growth import initialize as initialize_growth
+        initialize_growth(self)
 
     def flush_usage(self,task_id=None):
         if not isinstance(self.model,Model):return
@@ -237,6 +239,11 @@ class Fish:
         autonomous_state['真实兴趣线（开放问题不是事实）']=interest_context(self)
         from .sharing import taste,sent_context
         autonomous_state['本鱼实际探索选择（非用户画像）']=taste(self)
+        from .activity import day
+        autonomous_state['今天实际做过什么（分清完成与计划）']=day(self)
+        from .growth import enabled as growth_enabled
+        autonomous_state['当前兴趣范围（不代表已经探索）']=[row['topic'] for row in self.rows('SELECT topic FROM interests ORDER BY id LIMIT 10')]
+        autonomous_state['新兴趣扩展设置']={'enabled':growth_enabled(self),'extra_model_attempts_per_7_days':1,'auto_topic_cap':8,'requires_observed_choices':3}
         autonomous_state['最近渠道接受的分享（不代表送达或已读）']=sent_context(self)
         from .relationship import context as relationship_context
         relationship_state=relationship_context(self,text)
@@ -429,6 +436,10 @@ class Fish:
                 result = '【模型生成，未联网核实】\n' + self.model.reply(self.context(prompt))
             else:
                 raise ValueError('当前运行版本不支持该任务类型，未执行。')
+            interest_proposal=None
+            if automatic_exploration and time.monotonic()<task_deadline-100:
+                from .growth import propose
+                interest_proposal=propose(self,row,metadata)
             if automatic_exploration and time.monotonic()>=task_deadline:raise ModelError('自动探索达到运行时限，已停止处理。')
             if automatic_exploration and task_generation!=generation(self):raise ModelError('聊天背景已清空，已丢弃旧背景探索结果。')
             if not waiting and self.db.execute('SELECT state FROM tasks WHERE id=?', (row['id'],)).fetchone()[0] == 'running':
@@ -454,6 +465,9 @@ class Fish:
                         complete_interest(self,row['id'],result)
                         from .sharing import record as record_choice
                         record_choice(self,row,metadata)
+                        if automatic_exploration:
+                            from .growth import apply as apply_growth
+                            apply_growth(self,row,interest_proposal)
                         for url in metadata.get('feed_entries',[]):self.db.execute('INSERT OR REPLACE INTO feed_reads VALUES (?,?,?)',(url,row['id'],self.clock()))
                         self.db.execute('INSERT OR IGNORE INTO exploration_notes VALUES (?,?,?,?,?)',(row['id'],row['goal'][:200],share,json.dumps([source['url'] for source in metadata['sources']]),self.clock()))
                     from .curiosity import should_share
