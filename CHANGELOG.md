@@ -1,10 +1,16 @@
 # Changelog
 
-## Unreleased — 开发范围调整（2026-11-05）
+## 0.7.0 — 2026-11-06 · Preview
 
-- 按维护者要求移除桌面形象、桌宠和动画界面的开发计划。
-- 编程保留现有小型 Python 隔离工具，不再扩展多语言工程与复杂依赖安装。
-- 后续优先完成视频理解、在线与升级稳定性、微信端验证及陪伴体验，详见 docs/roadmap.md。
+- Durable text/image turn batching, semantic bubbles, prompt cancellation on new input, priority controls, and five-minute private image follow-ups.
+- Dated user quotes and real task status for relationship continuity; reset generations prevent stale replies or actions from restoring cleared context.
+- Source-backed interest threads, daytime jittered exploration, temporary quiet/busy/rest states and official Codex quota guards. Background sharing uses SDK-managed context without the former invented 90-second admission rule.
+- Public RSS/Atom directories and unread entries; anonymous Bilibili/Douyin text reading with explicit scope and honest access failures. Tested Bilibili metadata works; tested Douyin anonymous page did not render.
+- Offline voice/TTS, bounded short-video frame/audio sampling, isolated public browser, complete report pagination and verified code snapshot deployment/rollback.
+- Fix remaining npm dependency alerts with reproducible patched packaging; preserve explicit privacy boundaries and encrypted recovery.
+- Scope: ordinary Unicode emoji; no desktop character, fixed sticker pack, expanded programming stack or long-term always-on deployment. Closed experimental PRs are not shipped features.
+
+Validation: 167 default Python checks pass (10 optional integration checks skipped by default), eight bridge checks and protected CI cover relevant runtime integrations. Separate real Codex tests validate persona examples, cancellation and one-call image/text reading with simulated sending. One explicitly requested proactive text send received owner confirmation; this does not establish cross-day automatic delivery or full media E2E reliability.
 
 ## 0.6.0 — 2026-11-05 · Preview
 
