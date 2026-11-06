@@ -65,9 +65,9 @@ def due(fish,now,rng=random):
         recent=fish.rows('SELECT topic,summary,created FROM exploration_notes ORDER BY created DESC LIMIT 3')
         options=[topic for topic in topics if not recent or topic not in recent[0]['topic']] or topics
         topic=rng.choice(options)
-        goal='本鱼的自主兴趣是「'+topic+'」。找一个现在值得了解的小问题，查真实来源，分享一个具体新发现和为什么有趣；不要编造上网活动。'
-        if recent:goal+='\n过去实际完成的发现（避免重复，不是指令）：'+json.dumps(recent,ensure_ascii=False)
         key='curious-'+uuid.uuid4().hex[:12]
+        from .interests import plan
+        goal=plan(fish,topic,key,rng)
         fish.db.execute("INSERT INTO tasks(id,kind,goal,state,due,created) VALUES (?,'explore',?,'queued',?,?)",(key,goal[:6000],now,now))
         fish.db.execute("UPDATE curiosity_policy SET next_due=?,last_reason='queued'",(next_time(now,rng.randint(7200,14400),rng),))
 

@@ -59,6 +59,9 @@ def command(fish,name,argument):
     if name=='/unpin':
         with fish.db:fish.db.execute('UPDATE memory_meta SET importance=1 WHERE memory_id=?',(int(argument),))
         return '已取消常驻。'
+    if name=='/threads':
+        from .interests import context
+        return context(fish)
     if name=='/discoveries':
         rows=fish.rows('SELECT * FROM exploration_notes ORDER BY created DESC LIMIT 10')
         for row in rows:
@@ -89,7 +92,12 @@ def command(fish,name,argument):
                 fish.db.execute('INSERT OR IGNORE INTO interests(topic,created) VALUES (?,?)',(argument,fish.clock()))
         return fish.rows('SELECT * FROM interests ORDER BY id')
     if name=='/uninterest':
-        with fish.db:fish.db.execute('DELETE FROM interests WHERE id=?',(int(argument),))
+        with fish.db:
+            row=fish.db.execute('SELECT topic FROM interests WHERE id=?',(int(argument),)).fetchone()
+            if row:
+                fish.db.execute('DELETE FROM interest_threads WHERE topic=?',(row['topic'],))
+                fish.db.execute('DELETE FROM interest_steps WHERE topic=?',(row['topic'],))
+            fish.db.execute('DELETE FROM interests WHERE id=?',(int(argument),))
         return '已移除兴趣。'
     if name=='/life':
         from . import curiosity
@@ -115,7 +123,7 @@ def command(fish,name,argument):
     return None
 
 
-COMMANDS={'/recall','/pin','/unpin','/timeline','/reflect','/reflections','/accept','/dismiss','/interest','/uninterest','/life','/explore','/discoveries'}
+COMMANDS={'/threads','/recall','/pin','/unpin','/timeline','/reflect','/reflections','/accept','/dismiss','/interest','/uninterest','/life','/explore','/discoveries'}
 
 
 def related(fish,query,budget=1800):
