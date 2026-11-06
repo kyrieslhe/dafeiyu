@@ -1,4 +1,4 @@
-"""Bounded anonymous Bilibili short clips. No cookies, signed-account APIs or external parsers."""
+"""Bounded anonymous Bilibili, NASA and NOAA short clips. No cookies, signed-account APIs or external parsers."""
 import hashlib
 import json
 from pathlib import Path
@@ -14,7 +14,7 @@ MAX_BYTES=20*1024*1024
 
 def cdn_url(url,source='bilibili'):
     p=urlsplit(url)
-    allowed=(source=='bilibili' and p.hostname and p.hostname.endswith('.bilivideo.com')) or (source=='nasa' and p.hostname=='images-assets.nasa.gov' and p.path.startswith('/video/') and p.path.endswith('.mp4'))
+    allowed=(source=='bilibili' and p.hostname and p.hostname.endswith('.bilivideo.com')) or (source=='noaa' and ((p.hostname=='oceantoday.noaa.gov' and re.fullmatch('/[a-z0-9_-]+/[A-Za-z0-9_.-]+[.]mp4',p.path)) or (p.hostname=='cdn.oceanservice.noaa.gov' and re.fullmatch('/oceantodayprod/media/[a-z0-9_-]+/[A-Za-z0-9_.-]+[.]mp4',p.path)))) or (source=='nasa' and p.hostname=='images-assets.nasa.gov' and p.path.startswith('/video/') and p.path.endswith('.mp4'))
     if p.scheme!='https' or not allowed or p.username or p.password or p.port not in (None,443):raise ModelError('播放资源不属于允许的公开 HTTPS CDN。')
     return url
 
@@ -52,11 +52,14 @@ def resolve(page):
 def _download(url,home,name,expected,page,source='bilibili'):
     from .research import target,PinnedHTTPS
     from .platforms import canonical
-    if source=='nasa':
+    if source=='noaa':
+        from .noaa_video import canonical as noaa_page
+        page=noaa_page(page)
+    elif source=='nasa':
         from .nasa_video import canonical as nasa_page
         page=nasa_page(page)
     else:page=canonical('bilibili',page)
-    if source=='nasa' and expected is None:bounded_only=True
+    if source in ('nasa','noaa') and expected is None:bounded_only=True
     else:bounded_only=False
     if not re.fullmatch('[0-9a-f]{32}[.]mp4',name) or (not bounded_only and (type(expected) is not int or not 0<expected<=MAX_BYTES)):raise ModelError('下载参数无效。')
     root=Path(home).resolve()/'media/video-inputs';root.mkdir(parents=True,exist_ok=True,mode=0o700)

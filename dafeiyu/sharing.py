@@ -51,7 +51,7 @@ def parse(raw):
 
 
 def record(fish,row,metadata):
-    if type(metadata.get('recommend')) is not bool:return
+    if type(metadata.get('recommend')) is not bool or metadata.get('scope') in ('feed_directory_only','text_only_not_video'):return
     from .memory import reject_secret
     reason=str(metadata.get('recommend_reason','仅文案，未观察视频内容'))[:300]
     try:reject_secret(reason)
