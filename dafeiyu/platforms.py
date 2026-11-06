@@ -61,14 +61,17 @@ def page_source(site,url,home,identifier,cancelled=lambda:False):
 def read(fish,site,goal,identifier):
     if site not in SITES:raise ValueError('仅支持 bilibili 或 douyin。')
     urls=re.findall(r'https://[^\s<>\]\)"\u3002]+',goal)
-    if not urls:
+    def valid_urls(values):
+        result=[]
+        for value in values:
+            try:result.append(canonical(site,value))
+            except ValueError:continue
+        return result
+    if not valid_urls(urls):
         if not hasattr(fish.model,'search'):raise ModelError('需要提供一个公开视频页面地址。')
         found=fish.model.search([{'role':'user','content':'仅搜索'+SITES[site][0]+('（也可用 jingxuan.douyin.com/m/video/ 公开页）' if site=='douyin' else '')+'上符合以下兴趣的一个公开视频条目，给出完整 https://'+SITES[site][1]+'/video/ 地址和标题。不要登录或执行命令。目标：'+goal}])
         urls=re.findall(r'https://[^\s<>\]\)"\u3002]+',found)
-    candidates=[]
-    for url in urls:
-        try:candidates.append(canonical(site,url))
-        except ValueError:continue
+    candidates=valid_urls(urls)
     if not candidates:
         with fish.db:fish.db.execute('INSERT INTO platform_visits(site,url,state,created) VALUES (?,?,?,?)',(site,'','no_public_entry',fish.clock()))
         raise ModelError('没有找到可验证的公开视频条目。')

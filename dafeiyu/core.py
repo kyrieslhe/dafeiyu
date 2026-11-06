@@ -458,6 +458,8 @@ class Fish:
         if command=='/platform':
             site,_,goal=argument.partition(' ')
             if site not in ('bilibili','douyin') or not goal:raise ValueError('用法：/platform bilibili或douyin 主题或公开页面URL')
+            from .memory import reject_secret
+            reject_secret(goal)
             return '本鱼去看看公开文案，不登录也不假装看完视频。任务：'+self.enqueue('platform',site+' '+goal)
         if command == '/browse':
             from .memory import reject_secret
