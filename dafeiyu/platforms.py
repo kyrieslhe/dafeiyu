@@ -8,7 +8,7 @@ import shutil
 from urllib.parse import urlsplit,urlencode
 from .core import ModelError
 
-SITES={'bilibili':('B站','www.bilibili.com'),'douyin':('抖音','www.douyin.com'),'nasa':('NASA','images.nasa.gov')}
+SITES={'bilibili':('B站','www.bilibili.com'),'douyin':('抖音','www.douyin.com'),'nasa':('NASA','images.nasa.gov'),'noaa':('NOAA','oceantoday.noaa.gov')}
 
 
 def initialize(fish):
@@ -16,10 +16,13 @@ def initialize(fish):
 
 
 def canonical(site,url):
+    if site=='noaa':
+        from .noaa_video import canonical as noaa_page
+        return noaa_page(url)
     if site=='nasa':
         from .nasa_video import canonical as nasa_page
         return nasa_page(url)
-    if site not in SITES:raise ValueError('仅支持 bilibili、douyin 或 nasa。')
+    if site not in SITES:raise ValueError('仅支持 bilibili、douyin、nasa 或 noaa。')
     p=urlsplit(url)
     allowed={SITES[site][1]} if site=='bilibili' else {'www.douyin.com','jingxuan.douyin.com'}
     if p.scheme!='https' or p.hostname not in allowed or p.username or p.password or p.port not in (None,443):raise ValueError('只读对应平台公开视频页面。')
@@ -62,10 +65,13 @@ def page_source(site,url,home,identifier,cancelled=lambda:False):
 
 
 def read(fish,site,goal,identifier):
+    if site=='noaa':
+        from .noaa_video import read as read_noaa
+        return read_noaa(fish,goal,identifier)
     if site=='nasa':
         from .nasa_video import read as read_nasa
         return read_nasa(fish,goal,identifier)
-    if site not in SITES:raise ValueError('仅支持 bilibili、douyin 或 nasa。')
+    if site not in SITES:raise ValueError('仅支持 bilibili、douyin、nasa 或 noaa。')
     urls=re.findall(r'https://[^\s<>\]\)"\u3002]+',goal)
     def valid_urls(values):
         result=[]
@@ -122,13 +128,16 @@ def choose(fish,identifier):
     from .watching import enabled
     from .nasa_video import keyword
     from .sharing import public_goal
-    science=enabled(fish) and keyword(public_goal(fish,identifier,''),identifier)
-    if enabled(fish) and number%2==0:site='nasa' if science and number%4==0 else 'bilibili'
+    from .noaa_video import relevant
+    goal=public_goal(fish,identifier,'')
+    science=enabled(fish) and keyword(goal,identifier)
+    official='noaa' if enabled(fish) and relevant(goal) else ('nasa' if science else None)
+    if enabled(fish) and number%2==0:site=official if official and number%4==0 else 'bilibili'
     elif number%3:return None
     else:site=('bilibili','douyin')[(number//3)%2]
     def cooling(candidate):return fish.db.execute("SELECT 1 FROM platform_visits WHERE site=? AND state IN ('unavailable','no_public_entry','sample_unavailable') AND created>?",(candidate,fish.clock()-6*3600)).fetchone()
     if cooling(site):
-        if site=='bilibili' and science and not cooling('nasa'):site='nasa'
+        if site=='bilibili' and official and not cooling(official):site=official
         else:return None
     return site
 

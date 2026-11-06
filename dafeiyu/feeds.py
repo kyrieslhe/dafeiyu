@@ -5,7 +5,7 @@ import re
 from urllib.parse import urlsplit,parse_qsl
 import xml.etree.ElementTree as ET
 
-DEFAULTS=[('宇宙 自然 科学','https://www.nasa.gov/news-release/feed/'),('AI 开源 工具','https://github.blog/feed/'),('AI 研究 论文','https://export.arxiv.org/api/query?search_query=cat:cs.AI&sortBy=submittedDate&sortOrder=descending&max_results=5')]
+DEFAULTS=[('海洋 动物 鲸鱼','https://oceanservice.noaa.gov/rss/oceanfacts.xml'),('宇宙 自然 科学','https://www.nasa.gov/news-release/feed/'),('AI 开源 工具','https://github.blog/feed/'),('AI 研究 论文','https://export.arxiv.org/api/query?search_query=cat:cs.AI&sortBy=submittedDate&sortOrder=descending&max_results=5')]
 
 
 def initialize(fish):
@@ -48,16 +48,17 @@ def entries(text):
     result=[]
     for node in root.iter():
         if node.tag.rsplit('}',1)[-1] not in ('item','entry'):continue
-        title='';url='';summary=''
+        title='';url='';summary='';published=''
         for child in node:
             name=child.tag.rsplit('}',1)[-1]
             if name=='title':title=''.join(child.itertext()).strip()[:240]
             elif name=='link' and child.attrib.get('rel','alternate')=='alternate':url=(child.attrib.get('href') or child.text or '').strip()
+            elif name in ('pubDate','published','updated'):published=(child.text or '')[:120]
             elif name in ('summary','description'):summary=re.sub('<[^>]+>',' ',''.join(child.itertext()))[:600]
         if url.startswith('http://'):url='https://'+url[7:]
         try:validate(url)
         except ValueError:continue
-        if title and url not in [r['url'] for r in result]:result.append({'title':title,'url':url,'summary':summary})
+        if title and url not in [r['url'] for r in result]:result.append({'title':title,'url':url,'summary':summary,**({'published_at':published} if published else {})})
         if len(result)>=12:break
     return result
 

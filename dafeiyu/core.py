@@ -365,13 +365,15 @@ class Fish:
                 return None
         from .relationship import generation
         task_generation=generation(self)
+        automatic_exploration=row['kind']=='explore' and row['id'].startswith(('curious-','life-'))
+        task_deadline=time.monotonic()+540
         waiting = False
         changed = False
         if isinstance(self.model, Model):
             def cancelled():
                 if self.db.execute('SELECT state FROM tasks WHERE id=?',(row['id'],)).fetchone()[0]!='running':return True
                 if automatic(row['id']):
-                    if row['kind']=='explore' and task_generation!=generation(self):return True
+                    if automatic_exploration and (task_generation!=generation(self) or time.monotonic()>=task_deadline):return True
                     from .quota import guard
                     return guard(self)['status']!='ok'
                 return False
@@ -427,7 +429,8 @@ class Fish:
                 result = '【模型生成，未联网核实】\n' + self.model.reply(self.context(prompt))
             else:
                 raise ValueError('当前运行版本不支持该任务类型，未执行。')
-            if row['kind']=='explore' and row['id'].startswith(('curious-','life-')) and task_generation!=generation(self):raise ModelError('聊天背景已清空，已丢弃旧背景探索结果。')
+            if automatic_exploration and time.monotonic()>=task_deadline:raise ModelError('自动探索达到运行时限，已停止处理。')
+            if automatic_exploration and task_generation!=generation(self):raise ModelError('聊天背景已清空，已丢弃旧背景探索结果。')
             if not waiting and self.db.execute('SELECT state FROM tasks WHERE id=?', (row['id'],)).fetchone()[0] == 'running':
                 reports = self.home / 'reports'
                 reports.mkdir(exist_ok=True)
@@ -458,6 +461,11 @@ class Fish:
                     self.db.execute('INSERT OR IGNORE INTO episodes(source,kind,content,created) VALUES (?,?,?,?)',('task:'+row['id'], 'code_candidate' if waiting else row['kind'], '任务 '+row['id']+' 实际结果：'+result[:1200],self.clock()))
         except Exception as error:
             safe = str(error) if isinstance(error, (ModelError, ValueError)) or error.__class__.__name__ in ('ResearchError', 'CodingError') else '任务处理失败（%s），未产生结果。' % type(error).__name__
+            if isinstance(getattr(error,'failures',None),list):
+                try:
+                    reports=self.home/'reports';reports.mkdir(exist_ok=True)
+                    evidence=reports/(row['id']+'.failure.json');evidence.write_text(json.dumps({'failures':error.failures,'state':'failed'},ensure_ascii=False));evidence.chmod(0o600)
+                except OSError:pass
             with self.db:
                 failed=self.db.execute("UPDATE tasks SET state='failed',error=?,lease=NULL WHERE id=? AND state='running'", (safe, row['id'])).rowcount
                 if failed and not (row['kind']=='explore' and row['id'].startswith(('curious-','life-'))):
@@ -485,7 +493,7 @@ class Fish:
             return '语音任务已入队：'+self.enqueue('speech',argument)
         if command=='/platform':
             site,_,goal=argument.partition(' ')
-            if site not in ('bilibili','douyin','nasa') or not goal:raise ValueError('用法：/platform bilibili、douyin或nasa 主题或公开页面URL')
+            if site not in ('bilibili','douyin','nasa','noaa') or not goal:raise ValueError('用法：/platform bilibili、douyin、nasa或noaa 主题或公开页面URL')
             from .memory import reject_secret
             reject_secret(goal)
             return '本鱼去看看公开内容，短片只采样，不登录也不假装完整看过。任务：'+self.enqueue('platform',site+' '+goal)
