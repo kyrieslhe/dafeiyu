@@ -167,7 +167,9 @@ def research(model, question, companion=False,feed_urls=None,seen_urls=None,disc
     if discover:
         allowed=[]
         for url in urls:
-            host=(urlsplit(url).hostname or '').lower()
+            try:host=(urlsplit(url).hostname or '').encode('idna').decode().lower().rstrip('.')
+            except (ValueError,UnicodeError):
+                failures.append({'url':url,'error':'来源地址无效，未读取。'});continue
             if any(host==domain or host.endswith('.'+domain) for domain in ('bilibili.com','b23.tv','douyin.com','iesdouyin.com')):
                 failures.append({'url':url,'error':'自主来源已切换，未读取该平台。'})
             else:allowed.append(url)
