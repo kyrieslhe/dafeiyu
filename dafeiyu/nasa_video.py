@@ -55,14 +55,17 @@ def read(fish,goal,identifier):
     try:
         items=json.loads(fetch('https://images-api.nasa.gov/search?'+urlencode(params))['text']).get('collection',{}).get('items',[])
         for item in items[:3]:
+            if not enabled(fish):raise ModelError('短片探索已关闭。')
             if getattr(fish.model,'cancelled',lambda:False)():raise ModelError('官方短片探索已取消。')
             try:
                 info=resolve(item)
                 if urls and info['page']!=page:continue
                 report,metadata=sampled(fish,info['page'],goal,identifier,info=info)
+                if not enabled(fish):raise ModelError('短片探索已关闭。')
                 with fish.db:fish.db.execute('INSERT INTO platform_visits VALUES (NULL,?,?,?,?)',('nasa',info['page'],'sampled_clip',fish.clock()))
                 return report,metadata
             except (ModelError,ValueError):continue
     except (ValueError,TypeError,KeyError):pass
+    if not enabled(fish):raise ModelError('短片探索已关闭。')
     with fish.db:fish.db.execute('INSERT INTO platform_visits VALUES (NULL,?,?,?,?)',('nasa','','sample_unavailable',fish.clock()))
     raise ModelError('没有取得可分析的 NASA 短片，未伪造观看。')

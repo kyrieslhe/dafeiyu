@@ -96,12 +96,14 @@ def read(fish,site,goal,identifier):
         if not candidates:raise ModelError('近期已分析这些候选，跳过重复视频。')
     if site=='bilibili' and enabled(fish) and hasattr(fish.model,'codex_reply'):
         for candidate in list(dict.fromkeys(candidates))[:3]:
+            if not enabled(fish):raise ModelError('短片探索已关闭。')
             if getattr(fish.model,'cancelled',lambda:False)():raise ModelError('视频探索已取消。')
             try:
                 report,metadata=sampled(fish,candidate,goal,identifier)
                 with fish.db:fish.db.execute('INSERT INTO platform_visits(site,url,state,created) VALUES (?,?,?,?)',(site,candidate,'sampled_clip',fish.clock()))
                 return report,metadata
             except (ModelError,ValueError):continue
+        if not enabled(fish):raise ModelError('短片探索已关闭。')
         with fish.db:fish.db.execute('INSERT INTO platform_visits(site,url,state,created) VALUES (?,?,?,?)',(site,candidates[0],'sample_unavailable',fish.clock()))
     url=candidates[0]
     try:source=page_source(site,url,fish.home,identifier,getattr(fish.model,'cancelled',lambda:False))
