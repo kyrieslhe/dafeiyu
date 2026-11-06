@@ -1,4 +1,4 @@
-"""At-most-one automatic send after a fresh inbound context. Never treats accepted as read."""
+"""At-most-one attempt per result using the SDK-managed platform context. Never treats accepted as read."""
 import json
 from pathlib import Path
 import subprocess
@@ -13,6 +13,7 @@ def deliver(fish, runner=subprocess.run):
     with fish.db:
         fish.db.execute("UPDATE deliveries SET state='delivery_unknown' WHERE state='sending' AND updated<?",(now-90,))
         if fish.db.execute("SELECT value FROM settings WHERE key='paused'").fetchone()[0]=='1': return None
+        if fish.db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone() and fish.db.execute("SELECT 1 FROM conversation_inbox WHERE state IN ('queued','working','sending')").fetchone():return None
         binding=fish.db.execute('SELECT * FROM channel_binding WHERE singleton=1').fetchone()
         if not binding: return None
         row=fish.db.execute('''SELECT o.*,t.kind FROM outbox o JOIN tasks t ON t.id=o.task_id
@@ -20,19 +21,16 @@ def deliver(fish, runner=subprocess.run):
           AND o.id NOT IN (SELECT outbox_id FROM curiosity_suppressed)
           AND (d.outbox_id IS NULL OR (d.state='waiting_context' AND d.updated<?)) ORDER BY o.id LIMIT 1''',(binding['last_seen'],)).fetchone()
         if not row:return None
-        fresh=0<=now-binding['last_seen']<90
         hour=datetime.fromtimestamp(now,ZoneInfo('Asia/Hong_Kong')).hour
         if row['kind']!='reminder' and (hour>=23 or hour<8):return None
-        if not fresh:
-            fish.db.execute("INSERT OR REPLACE INTO deliveries VALUES (?,'waiting_context',NULL,?)",(row['id'],now))
-            return 'waiting_context'
+        if fish.db.execute("SELECT 1 FROM deliveries WHERE state='accepted' AND updated>?",(now-30,)).fetchone():return None
         # Reserve before sending; crashes and timeouts never cause blind retries.
         claimed=fish.db.execute("INSERT OR IGNORE INTO deliveries VALUES (?,'sending',NULL,?)",(row['id'],now)).rowcount
         if not claimed:
             claimed=fish.db.execute("UPDATE deliveries SET state='sending',updated=? WHERE outbox_id=? AND state='waiting_context'",(now,row['id'])).rowcount
         if not claimed:return None
     script=Path(__file__).resolve().parent.parent/'scripts/openclaw'
-    message='🐳 任务 '+row['task_id']+'\n'+row['content'][:2500]
+    message=(('🐳 任务 '+row['task_id']+'\n') if row['kind'] not in ('explore','research') else '')+row['content'][:2500]
     if len(row['content'])>2500:message+='\n完整成果：大肥鱼 /result '+row['task_id']
     command=[str(script),'message','send','--channel','openclaw-weixin','--account',binding['account'],'--target',binding['sender'],'--message',message,'--json']
     asset=fish.db.execute('SELECT path FROM task_assets WHERE task_id=?',(row['task_id'],)).fetchone()

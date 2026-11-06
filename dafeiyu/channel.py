@@ -57,6 +57,9 @@ def inbound(fish, event):
     else:
         if text.startswith('大肥鱼 '): text=text[len('大肥鱼 '):].strip()
         try:
+            if event.get('buffer_text') is True and not media:
+                from .conversation import enqueue
+                return enqueue(fish,key,account,sender,text)
             if media and any(isinstance(item,dict) and str(item.get('mime','')).startswith('video/') for item in media):
                 from .media import store_video
                 path=store_video(fish.home,media)
@@ -132,7 +135,7 @@ def health(fish):
             'seconds_since_inbound':round(max(0,now-last['last_seen'])) if last and last['last_seen'] else None,
             'task_states':fish.rows('SELECT state,count(*) AS count FROM tasks GROUP BY state'),
             'delivery_states':fish.rows('SELECT state,count(*) AS count FROM deliveries GROUP BY state'),
-            'note':'本机处理与发送尝试统计；不代表微信送达、已读或平台延迟。重复来信不刷新主动投递窗口。'}
+            'note':'本机处理与发送尝试统计；不代表微信送达、已读或平台延迟。重复来信不刷新身份活动时间。'}
 
 
 if __name__=='__main__':main()

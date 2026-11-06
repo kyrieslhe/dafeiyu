@@ -53,6 +53,7 @@ def control(args):
         code=selected(ROOT)
         commands={'gateway':[str(code/'scripts/openclaw'),'gateway','run'],
                   'worker':[sys.executable,'-m','dafeiyu','--home',str(ROOT/'var'),'worker','--deliver']}
+        if (code/'dafeiyu/conversation.py').is_file():commands['conversation']=[sys.executable,'-m','dafeiyu.conversation','--home',str(ROOT/'var')]
         for name,command in commands.items():
             if name=='gateway' and name not in records:
                 found=subprocess.run(['lsof','-t','-iTCP:18791','-sTCP:LISTEN'],capture_output=True,text=True)

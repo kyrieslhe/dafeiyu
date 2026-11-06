@@ -35,7 +35,7 @@ macOS：`python3 scripts/setup_runtime.py`。安装 Node 26.13.0、OpenClaw 2026
 
 ## 投递与进程
 
-后台 `worker --deliver` 只向已绑定的账号发送结果，最近用户来信必须在本地保守的 90 秒以内；这不是平台必达承诺。超出则 waiting_context，等下一条真实用户来信。发送超时进入 delivery_unknown，不盲目重发；成功仅记 accepted，不代表已读。没有备用通知。23:00–08:00 除明确的一次提醒外不主动投递。
+后台 `worker --deliver` 只向已绑定的账号发送结果，使用 SDK 管理的已有会话上下文尝试投递，不再人为限制最近来信必须在 90 秒内。平台明确拒绝上下文后才进入 waiting_context，等下一条真实用户来信；没有承诺平台上下文永久有效。发送超时进入 delivery_unknown，不盲目重发；成功仅记 accepted，不代表已读。没有备用通知。23:00–08:00 除明确的一次提醒外不主动投递。
 
 `/inbox` 查看所有未标记查看的成果；`/ack 编号` 标记查看。微信回传限制为短摘要，完整成果用 `/result TASK` 或本地报告读取。`/pause` 同时停止新任务和新投递；`/cancel TASK` 终止在途 Codex 或容器工作，抓取操作最多等待当前网络超时，取消后的结果不发布。
 
