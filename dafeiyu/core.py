@@ -249,16 +249,20 @@ class Fish:
     def chat(self, text, images=None, allow_actions=True):
         if not text.strip() or len(text) > 12000:
             raise ValueError('消息须为 1–12000 字符。')
+        from .relationship import generation
+        started_generation=generation(self)
         try:
             if hasattr(self.model,'plan'):
                 from .actions import route
-                result=route(self,text,self.context(text),images=images,allow_actions=allow_actions)
+                result=route(self,text,self.context(text),images=images,allow_actions=allow_actions,generation=started_generation)
             else:
                 if images:raise ModelError('当前模型后端未提供图片输入能力。')
                 result = self.model.reply(self.context(text))
         finally:
             self.flush_usage()
         with self.db:
+            self.db.execute("UPDATE settings SET value=value WHERE key='paused'")
+            if generation(self)!=started_generation:raise ModelError('聊天上下文已重置，旧回复已取消。')
             self.db.executemany('INSERT INTO messages(role,content,created) VALUES (?,?,?)',
                                 [('user', text, self.clock()), ('assistant', result, self.clock())])
         from .life import record
@@ -280,7 +284,8 @@ class Fish:
             if not cursor.rowcount:
                 return '没有这个记忆编号。'
             self.db.execute('DELETE FROM messages')
-            self.db.execute("INSERT OR REPLACE INTO settings VALUES ('relationship_reset',?)",(str(self.clock()),))
+            from .relationship import reset
+            reset(self)
             if self.db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone():self.db.execute("UPDATE conversation_inbox SET content='',reply=NULL WHERE state!='queued'")
             self.db.execute('DELETE FROM diary')
             self.db.execute('DELETE FROM episodes')
@@ -585,7 +590,8 @@ class Fish:
         if command == '/clear':
             with self.db:
                 self.db.execute('DELETE FROM messages')
-                self.db.execute("INSERT OR REPLACE INTO settings VALUES ('relationship_reset',?)",(str(self.clock()),))
+                from .relationship import reset
+                reset(self)
                 if self.db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone():self.db.execute("UPDATE conversation_inbox SET content='',reply=NULL WHERE state!='queued'")
                 self.db.execute("DELETE FROM episodes WHERE kind='conversation'")
             return '聊天上下文已清空；明确记忆仍保留。'

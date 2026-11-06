@@ -115,6 +115,7 @@ def command(fish,name,argument):
             with fish.db:
                 fish.db.execute('UPDATE life_plan SET enabled=0 WHERE singleton=1')
                 fish.db.execute("UPDATE tasks SET state='cancelled' WHERE (id LIKE 'curious-%' OR id LIKE 'life-%') AND state IN ('queued','running')")
+                fish.db.execute("INSERT OR IGNORE INTO curiosity_suppressed SELECT id,'user-off',? FROM outbox WHERE seen=0 AND (task_id LIKE 'curious-%' OR task_id LIKE 'life-%')",(fish.clock(),))
             return '自主探索已关闭，自动探索队列已停止；手动任务保留。'
         if argument.startswith('on '):
             at=argument[3:].strip();datetime.strptime(at,'%H:%M')

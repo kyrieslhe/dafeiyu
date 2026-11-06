@@ -33,7 +33,9 @@ class Reset(unittest.TestCase):
                     raise ModelError('cancelled')
             f.model=Model();receive('one','说个长一点的故事');now[0]+=2
             self.assertEqual(step(f,lambda *a,**k:self.fail('sent superseded reply')),'superseded')
-            self.assertFalse(f.model.cancelled());f.close()
+            self.assertFalse(f.model.cancelled())
+            user=f.db.execute("SELECT content FROM messages WHERE role='user'").fetchone()[0]
+            self.assertEqual(user,'说个长一点的故事');f.close()
     def test_old_binding_queue_does_not_block_new_approved_identity(self):
         with tempfile.TemporaryDirectory() as home:
             now=[1793930400];f=Fish(home,clock=lambda:now[0]);tables(f)
@@ -52,3 +54,24 @@ class Reset(unittest.TestCase):
         self.assertEqual(bubbles(text,'请一次发完'),[text])
         self.assertEqual(bubbles(text,'正式说明'),[text])
         self.assertEqual(len(bubbles(text,'今天有个好消息')),2)
+
+    def test_reset_during_planning_cannot_write_a_stale_memory(self):
+        with tempfile.TemporaryDirectory() as home:
+            f=Fish(home)
+            class Planner:
+                ready=True
+                def plan(self,messages):
+                    f.command('/clear')
+                    return {'action':'remember','argument':'我喜欢海洋','reply':''}
+            f.model=Planner()
+            with self.assertRaisesRegex(ModelError,'重置'):f.chat('请记住我喜欢海洋')
+            self.assertEqual(f.command('/memories'),[]);f.close()
+    def test_reset_during_plain_reply_cannot_restore_cleared_messages(self):
+        with tempfile.TemporaryDirectory() as home:
+            f=Fish(home)
+            class Reply:
+                ready=True
+                def reply(self,messages):f.command('/clear');return '不应写回的旧稿'
+            f.model=Reply()
+            with self.assertRaisesRegex(ModelError,'重置'):f.chat('原来的问题')
+            self.assertEqual(f.db.execute('SELECT count(*) FROM messages').fetchone()[0],0);f.close()

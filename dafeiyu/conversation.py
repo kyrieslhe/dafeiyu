@@ -1,5 +1,6 @@
 """Durable text bursts and paced replies, separate from the serial gateway and research worker."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -69,12 +70,16 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
         ids=[r['id'] for r in chosen];marks=','.join('?' for _ in ids)
         changed=fish.db.execute("UPDATE conversation_inbox SET state='working',claimed=? WHERE state='queued' AND id IN ("+marks+')',[now]+ids).rowcount
         if changed!=len(ids):return
+    from .relationship import generation
+    started_generation=generation(fish)
+    reset_command=chosen[0]['content'].split(' ',1)[0] in ('/clear','/forget','忘记')
     before=fish.db.execute('SELECT coalesce(max(id),0) FROM messages').fetchone()[0]
     before_episode=fish.db.execute('SELECT coalesce(max(id),0) FROM episodes').fetchone()[0]
     def current():
         active=fish.db.execute('SELECT * FROM channel_binding WHERE singleton=1').fetchone()
         existing=fish.db.execute("SELECT 1 FROM conversation_inbox WHERE id=? AND state IN ('working','sending')",(ids[0],)).fetchone()
-        newer=fish.db.execute("SELECT 1 FROM conversation_inbox WHERE id>? AND state IN ('queued','control')",(ids[-1],)).fetchone()
+        newer=fish.db.execute("SELECT 1 FROM conversation_inbox WHERE id>? AND state IN ('queued','control') AND account=? AND sender=?",(ids[-1],binding['account'],binding['sender'])).fetchone()
+        if not reset_command and generation(fish)!=started_generation:return False
         return existing and active and active['account']==binding['account'] and active['sender']==binding['sender'] and not newer
     previous_cancel=getattr(fish.model,'cancelled',None)
     if previous_cancel is not None:fish.model.cancelled=lambda:previous_cancel() or not current()
@@ -90,9 +95,14 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
             for row in chosen:
                 fish.db.execute("UPDATE inbound SET state='completed',reply=NULL WHERE id=?",(row['inbound_id'],))
                 fish.db.execute("UPDATE inbound_stats SET finished=?,outcome='superseded' WHERE id=?",(fish.clock(),row['inbound_id']))
-            # Keep the user's actual text, but never retain an unsent answer as spoken history.
+            # Preserve the original user input even when native cancellation prevented chat() from saving it.
+            original='\n'.join(row['content'] for row in chosen)
+            keep_input=not reset_command and generation(fish)==started_generation and not original.startswith('/')
+            if keep_input and not fish.db.execute("SELECT 1 FROM messages WHERE id>? AND role='user' AND content=?",(before,original)).fetchone():fish.db.execute("INSERT INTO messages(role,content,created) VALUES ('user',?,?)",(original,fish.clock()))
+            # Never retain an unsent answer as spoken history.
             fish.db.execute("DELETE FROM messages WHERE id>? AND role='assistant'",(before,))
             fish.db.execute("DELETE FROM episodes WHERE id>? AND kind='conversation'",(before_episode,))
+            if keep_input:fish.db.execute("INSERT OR IGNORE INTO episodes(source,kind,content,created) VALUES (?,'conversation',?,?)",('burst-input:'+hashlib.sha256(chosen[0]['inbound_id'].encode()).hexdigest(),'用户原话（此前没有发出回复）：'+original[:1000],fish.clock()))
         return 'superseded'
     with fish.db:fish.db.execute("UPDATE conversation_inbox SET state='sending',reply=? WHERE id IN ("+marks+')',[reply]+ids)
     state='accepted';sent=[]

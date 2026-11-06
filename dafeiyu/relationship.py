@@ -6,6 +6,16 @@ import re
 from .memory import reject_secret
 
 
+def generation(fish):
+    row=fish.db.execute("SELECT value FROM settings WHERE key='relationship_generation'").fetchone()
+    return int(row[0]) if row else 0
+
+
+def reset(fish):
+    fish.db.execute("INSERT OR REPLACE INTO settings VALUES ('relationship_reset',?)",(str(fish.clock()),))
+    fish.db.execute("INSERT INTO settings VALUES ('relationship_generation','1') ON CONFLICT(key) DO UPDATE SET value=CAST(value AS INTEGER)+1")
+
+
 def context(fish,query=None):
     now=fish.clock();days=set();anchors=[]
     reset=fish.db.execute("SELECT value FROM settings WHERE key='relationship_reset'").fetchone()

@@ -60,6 +60,8 @@ def inbound(fish, event):
             if event.get('buffer_text') is True and not media:
                 from .conversation import enqueue,immediate,barrier
                 if not immediate(text):return enqueue(fish,key,account,sender,text)
+                from .presence import observe
+                with fish.db:observe(fish,text)
                 barrier(fish,key,account,sender)
             if media and any(isinstance(item,dict) and str(item.get('mime','')).startswith('video/') for item in media):
                 from .media import store_video
@@ -131,7 +133,8 @@ def health(fish):
     rows=fish.rows('SELECT received,finished,outcome FROM inbound_stats WHERE received>?',(now-86400,))
     durations=sorted(max(0,r['finished']-r['received']) for r in rows if r['finished'] is not None)
     last=fish.db.execute('SELECT last_seen FROM channel_binding WHERE singleton=1').fetchone()
-    return {'inbound_24h':len(rows),'outcomes':{state:sum(r['outcome']==state for r in rows) for state in ('completed','failed','rejected','interrupted','processing')},
+    conversation=fish.rows('SELECT state,count(*) AS count FROM conversation_inbox GROUP BY state') if fish.db.execute("SELECT 1 FROM sqlite_master WHERE name='conversation_inbox'").fetchone() else []
+    return {'conversation_states':conversation,'inbound_24h':len(rows),'outcomes':{state:sum(r['outcome']==state for r in rows) for state in ('completed','accepted','delivery_unknown','superseded','failed','rejected','interrupted','processing')},
             'p95_processing_seconds':round(durations[max(0,(95*len(durations)+99)//100-1)],2) if durations else None,
             'seconds_since_inbound':round(max(0,now-last['last_seen'])) if last and last['last_seen'] else None,
             'task_states':fish.rows('SELECT state,count(*) AS count FROM tasks GROUP BY state'),
