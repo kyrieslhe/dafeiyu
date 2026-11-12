@@ -37,7 +37,8 @@ def immediate(text):
 
 def standalone(text):
     from .todos import parse
-    return text.startswith('/') or parse(text) is not None
+    from .reminders import parse as reminder_parse
+    return text.startswith('/') or parse(text) is not None or reminder_parse(text) is not None
 
 
 def barrier(fish,key,account,sender):
