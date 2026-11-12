@@ -275,6 +275,9 @@ class Fish:
             from .todos import natural as todo_request
             local_reply=todo_request(self,text,allow_writes=allow_actions)
             if local_reply is not None:return local_reply
+            from .reminders import natural as reminder_request
+            local_reply=reminder_request(self,text,allow_writes=allow_actions)
+            if local_reply is not None:return local_reply
         started_generation=generation(self)
         try:
             if hasattr(self.model,'plan'):
@@ -509,6 +512,12 @@ class Fish:
                 text = replacement + text[len(prefix):]; break
         command, _, argument = text.partition(' ')
         argument = argument.strip()
+        if command=='/reminders':
+            from .reminders import listing
+            return listing(self,argument or '1')
+        if command=='/reschedule':
+            from .reminders import reschedule
+            return reschedule(self,argument)
         if command=='/todo':
             from .todos import command as todo_command
             return todo_command(self,argument)
@@ -675,6 +684,8 @@ HELP = '''🐳 大肥鱼 · 本地私人伙伴
 /todo [list|completed|all] [页码] 查看个人待办，不消耗模型
 /todo add 内容        添加待办；done|reopen|delete 编号 完成／恢复／删除
 /remind 2026-12-01T09:00 内容   香港时间的一次提醒
+/reminders [页码]     按触发时间查看实际待处理提醒
+/reschedule 编号 ISO8601时间  修改尚未开始的提醒时间
 /research 问题或HTTPS链接   联网研究并记录来源\n/code 项目名 目标     生成候选、隔离测试；不直接应用\n/diff 任务编号        查看候选差异与测试\n/approve 任务编号 摘要  确认精确候选修改\n/result 任务编号 [页码]  分页查看任务成果\n/draft 主题           后台生成草稿，需要模型；不联网
 /daily                排队生成一次相处札记，需要模型
 /routine 21:00 主题    授权每天生成一次札记（消耗模型额度）\n/routines /unroutine 编号   查看／移除计划\n/tasks                查看任务与错误
