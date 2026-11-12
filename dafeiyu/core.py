@@ -211,6 +211,8 @@ class Fish:
         curiosity.initialize(self)
         from .growth import initialize as initialize_growth
         initialize_growth(self)
+        from .todos import initialize as initialize_todos
+        initialize_todos(self)
 
     def flush_usage(self,task_id=None):
         if not isinstance(self.model,Model):return
@@ -269,6 +271,10 @@ class Fish:
             raise ValueError('消息须为 1–12000 字符。')
         from .relationship import generation
         if callable(getattr(self.model,'cancelled',None)) and self.model.cancelled():raise ModelError('当前话轮已被补充或取消。')
+        if not images:
+            from .todos import natural as todo_request
+            local_reply=todo_request(self,text,allow_writes=allow_actions)
+            if local_reply is not None:return local_reply
         started_generation=generation(self)
         try:
             if hasattr(self.model,'plan'):
@@ -503,6 +509,9 @@ class Fish:
                 text = replacement + text[len(prefix):]; break
         command, _, argument = text.partition(' ')
         argument = argument.strip()
+        if command=='/todo':
+            from .todos import command as todo_command
+            return todo_command(self,argument)
         from .life import COMMANDS, command as life_command
         if command in COMMANDS:return life_command(self,command,argument)
         if command == '/speak':
@@ -663,6 +672,8 @@ HELP = '''🐳 大肥鱼 · 本地私人伙伴
 /memories             查看记忆
 /forget 编号          删除记忆，并清空历史与日记
 /diary [内容]         查看或添加共同日记
+/todo [list|completed|all] [页码] 查看个人待办，不消耗模型
+/todo add 内容        添加待办；done|reopen|delete 编号 完成／恢复／删除
 /remind 2026-12-01T09:00 内容   香港时间的一次提醒
 /research 问题或HTTPS链接   联网研究并记录来源\n/code 项目名 目标     生成候选、隔离测试；不直接应用\n/diff 任务编号        查看候选差异与测试\n/approve 任务编号 摘要  确认精确候选修改\n/result 任务编号 [页码]  分页查看任务成果\n/draft 主题           后台生成草稿，需要模型；不联网
 /daily                排队生成一次相处札记，需要模型

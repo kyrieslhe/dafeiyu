@@ -127,6 +127,7 @@ CI 在 Python 3.9/3.12、Node 26 和真实 Docker 中检查，不使用私人认
 - `/watch on|off` 控制匿名短片采样与推荐（见 [自主刷视频](docs/watching.md)）；受限内容不会伪装成看过。
 - `/feeds` 管理公开订阅，`/platform bilibili、douyin、youtube、nasa或noaa 主题或链接` 匿名读取公开条目；YouTube 当前只读标题、作者和简介，尚未接通播放、字幕及自动视频推荐。`/platforms off` 关闭平台自主尝试。参见 [平台阅读](docs/platform-reading.md)。
 - `/result 编号 [页码]` 读完整报告。失败、未完成、仅文案、采样画面和发送接受分别记录。
+- 个人待办：直接说“加个待办：买牛奶”“看看我的待办”“完成待办 1”，或用 `/todo`；支持恢复、删除及分页，明确格式不调用模型，也不自动设置提醒。见 [个人待办](docs/todos.md)。
 - 表达使用普通 Unicode emoji，由 Apple 等接收设备自行渲染；没有固定图片表情包或微信表情商店接入。
 
 参见 [聊天节奏](docs/conversation-rhythm.md)、[公开内容](docs/public-content.md)、[平台范围](docs/platform-reading.md)、[独立部署](docs/deployment.md)。桌面形象、复杂编程扩展和长期在线已退出当前范围。
