@@ -16,7 +16,8 @@ def listing(fish, page='1'):
     rows = fish.rows("SELECT id,goal,due,state FROM tasks WHERE kind='reminder' AND state IN ('queued','running') ORDER BY due,id LIMIT 10 OFFSET ?", ((int(page)-1)*10,))
     lines=[]
     for row in rows:
-        when=datetime.fromtimestamp(row['due'],TZ).strftime('%Y-%m-%d %H:%M:%S')
+        try:when=datetime.fromtimestamp(row['due'],TZ).strftime('%Y-%m-%d %H:%M:%S')
+        except (ValueError,OverflowError,OSError):when='时间超出可显示范围'
         status='正在处理' if row['state']=='running' else ('已到时间，待处理' if row['due']<=fish.clock() else '待触发')
         lines.append(when+' 香港时间 · '+status+'\n'+row['goal'][:200]+'\n编号 '+row['id'])
     return '你的提醒（第 '+page+'/'+str(pages)+' 页，共 '+str(count)+' 条）：\n\n'+'\n\n'.join(lines)+'\n\n离线时不会准时执行；以上不是已送达记录。'
@@ -30,11 +31,12 @@ def reschedule(fish, argument):
         if when.tzinfo is None:when=when.replace(tzinfo=TZ)
         due=when.timestamp()
         if not math.isfinite(due) or due<=fish.clock():raise ValueError()
+        local_when=when.astimezone(TZ).isoformat()
     except (ValueError,OverflowError,OSError):raise ValueError('请提供未来的有效时间，如 2026-12-01T09:00；未带时区时按香港时间。') from None
     with fish.db:
         changed=fish.db.execute("UPDATE tasks SET due=? WHERE id=? AND kind='reminder' AND state='queued'",(due,identifier)).rowcount
     if not changed:return '未修改：该提醒不存在、已开始处理或已经结束。正在处理的提醒不能改期。'
-    return '提醒时间改好啦：'+when.astimezone(TZ).isoformat()+'（香港时间）\n编号 '+identifier
+    return '提醒时间改好啦：'+local_when+'（香港时间）\n编号 '+identifier
 
 
 def parse(text):

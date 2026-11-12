@@ -46,7 +46,7 @@ class Reminders(unittest.TestCase):
 
     def test_invalid_time_or_identifier_does_not_change_due(self):
         key=self.fish.enqueue('reminder','事项',self.now+7200)
-        for argument in (key+' yesterday',key+' 2020-01-01T09:00',key+' 2026-02-30T09:00','bad 2026-12-01T09:00'):
+        for argument in (key+' yesterday',key+' 2020-01-01T09:00',key+' 2026-02-30T09:00',key+' 9999-12-31T23:00:00+00:00','bad 2026-12-01T09:00'):
             with self.assertRaises(ValueError):self.fish.command('/reschedule '+argument)
         self.assertEqual(self.fish.db.execute('SELECT due FROM tasks').fetchone()[0],self.now+7200)
 
