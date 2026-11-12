@@ -512,7 +512,7 @@ class Fish:
             return '语音任务已入队：'+self.enqueue('speech',argument)
         if command=='/platform':
             site,_,goal=argument.partition(' ')
-            if site not in ('bilibili','douyin','nasa','noaa') or not goal:raise ValueError('用法：/platform bilibili、douyin、nasa或noaa 主题或公开页面URL')
+            if site not in ('bilibili','douyin','youtube','nasa','noaa') or not goal:raise ValueError('用法：/platform bilibili、douyin、youtube、nasa或noaa 主题或公开页面URL')
             from .memory import reject_secret
             reject_secret(goal)
             return '本鱼去看看公开内容，短片只采样，不登录也不假装完整看过。任务：'+self.enqueue('platform',site+' '+goal)

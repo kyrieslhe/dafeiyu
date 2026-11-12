@@ -125,7 +125,7 @@ CI 在 Python 3.9/3.12、Node 26 和真实 Docker 中检查，不使用私人认
 - `/growth on|off` 允许从公开来源慢慢扩展新兴趣，`/day` 查看今天实际做过什么，见 [新兴趣与当天记录](docs/interest-growth.md)。
 - `/threads` 查看实际兴趣线；`/life random` 授权白天随机探索；`/quiet 分钟` 暂缓主动分享，`/life off` 关闭自动探索及其待分享发现。
 - `/watch on|off` 控制匿名短片采样与推荐（见 [自主刷视频](docs/watching.md)）；受限内容不会伪装成看过。
-- `/feeds` 管理公开订阅，`/platform bilibili、douyin、nasa或noaa 主题或链接` 匿名读取公开条目，`/platforms off` 关闭平台自主尝试。参见 [海洋视频与来源恢复](docs/marine-discovery.md)。
+- `/feeds` 管理公开订阅，`/platform bilibili、douyin、youtube、nasa或noaa 主题或链接` 匿名读取公开条目；YouTube 当前只读标题、作者和简介，尚未接通播放、字幕及自动视频推荐。`/platforms off` 关闭平台自主尝试。参见 [平台阅读](docs/platform-reading.md)。
 - `/result 编号 [页码]` 读完整报告。失败、未完成、仅文案、采样画面和发送接受分别记录。
 - 表达使用普通 Unicode emoji，由 Apple 等接收设备自行渲染；没有固定图片表情包或微信表情商店接入。
 
