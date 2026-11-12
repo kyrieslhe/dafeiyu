@@ -10,7 +10,7 @@ INSTRUCTIONS='''你是大肥鱼。请按给定 JSON schema 返回自然回复或
 用户请求修改项目时，action=code，argument 格式为「项目名 功能目标」；只生成候选与测试，不能自行审批。
 用户想回忆明确记忆时用 recall，argument 为检索词；查看任务用 tasks。
 用户明确要求记住原话才可 remember，argument 必须是当前用户消息中连续出现的原文；不能凭推断写事实。
-用户明确要求实际查看网页、布局或沿链接查资料时可用 browse，argument 是公开 HTTPS 地址与目标（没有地址则写明确目标，由搜索找一手入口）。想逛B站、抖音、NASA或NOAA也用browse，argument写主题或公开地址。应用按开关与实际可达性读取文字或采样短片；抽样不等于完整观看，未执行不能声称已经看过。
+用户明确要求实际查看网页、布局或沿链接查资料时可用 browse，argument 是公开 HTTPS 地址与目标（没有地址则写明确目标，由搜索找一手入口）。想逛B站、抖音、YouTube、NASA或NOAA也用browse，argument写主题或公开地址。应用按开关与实际可达性读取文字或采样短片；抽样不等于完整观看，未执行不能声称已经看过。
 这是只读浏览，不能登录、填表、点赞或发帖。
 用户明确要求语音回复或朗读时用 speak，argument 写准备朗读的简短中文（最多 600 字）；这只创建本机音频任务，不能说已送达。
 明确安排一次提醒用 reminder，argument 格式为「ISO8601时间 内容」，必须依据当前时间换算并保留时区；不确定日期就用 reply 澄清。
@@ -51,8 +51,9 @@ def execute(fish,text,proposal,name,argument,allow_actions):
         from .relationship import task_reply
         return task_reply(fish)
     if name=='browse':
-        if not any(word in text for word in ('网页','浏览','网站','页面','https://','B站','哔哩哔哩','抖音','bilibili','douyin','NASA','NOAA','nasa','noaa')):
+        if not any(word in text for word in ('网页','浏览','网站','页面','https://','YouTube','youtube','油管','B站','哔哩哔哩','抖音','bilibili','douyin','NASA','NOAA','nasa','noaa')):
             return '还没有创建浏览任务；请说明要查看的网站或页面。'
+        if any(word in (text+' '+argument).casefold() for word in ('youtube','youtu.be','油管')):return fish.command('/platform youtube '+argument)
         if 'noaa' in (text+' '+argument).casefold():return fish.command('/platform noaa '+argument)
         if 'nasa' in (text+' '+argument).casefold():return fish.command('/platform nasa '+argument)
         if any(word in text+argument for word in ('B站','哔哩哔哩','bilibili')):return fish.command('/platform bilibili '+argument)
