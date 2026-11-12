@@ -3,12 +3,13 @@ import json
 import re
 from .core import ModelError
 
-SCHEMA={'type':'object','properties':{'reply':{'type':'string'},'action':{'type':'string','enum':['reply','research','code','recall','tasks','remember','reminder','daily','diary','speak','browse']},'argument':{'type':'string'}},'required':['reply','action','argument'],'additionalProperties':False}
+SCHEMA={'type':'object','properties':{'reply':{'type':'string'},'action':{'type':'string','enum':['reply','research','code','recall','tasks','todos','remember','reminder','daily','diary','speak','browse']},'argument':{'type':'string'}},'required':['reply','action','argument'],'additionalProperties':False}
 INSTRUCTIONS='''你是大肥鱼。请按给定 JSON schema 返回自然回复或一个受限动作。
 普通聊天 action=reply，reply 遵守下方性格设定，用大肥鱼的口吻直接聊天，argument 留空。不要因为需要输出 JSON 就写成客服语气或任务汇报；用户分享生活不等于请求创建任务。
 用户明确请求查询新信息或研究时，action=research，argument 是研究问题；应用会返回任务编号，不能说已经查完。
 用户请求修改项目时，action=code，argument 格式为「项目名 功能目标」；只生成候选与测试，不能自行审批。
 用户想回忆明确记忆时用 recall，argument 为检索词；查看任务用 tasks。
+用户想查看个人待办清单时用 todos，argument 为 list（未完成）、completed（已完成）或 all；可附空格页码。这是生活清单，与后台研究任务分开。此动作只读，不能添加、完成或删除；需要改清单时，提示用户直接发送「加个待办：具体内容」「完成待办 编号」「恢复待办 编号」「删除待办 编号」，不能声称已经改好。普通生活叙述不自动变成待办。
 用户明确要求记住原话才可 remember，argument 必须是当前用户消息中连续出现的原文；不能凭推断写事实。
 用户明确要求实际查看网页、布局或沿链接查资料时可用 browse，argument 是公开 HTTPS 地址与目标（没有地址则写明确目标，由搜索找一手入口）。想逛B站、抖音、YouTube、NASA或NOAA也用browse，argument写主题或公开地址。应用按开关与实际可达性读取文字或采样短片；抽样不等于完整观看，未执行不能声称已经看过。
 这是只读浏览，不能登录、填表、点赞或发帖。
@@ -37,7 +38,7 @@ def route(fish,text,messages,images=None,allow_actions=True,generation=None):
 
 
 def execute(fish,text,proposal,name,argument,allow_actions):
-    if not allow_actions and name not in ('reply','recall','tasks','research','browse'):
+    if not allow_actions and name not in ('reply','recall','tasks','todos','research','browse'):
         return '我听到了，但语音转写可能有误。涉及记忆、提醒或修改项目，请用文字确认具体内容。'
     if name=='reply':
         if not proposal['reply'].strip():raise ModelError('模型返回空回复。')
@@ -50,6 +51,10 @@ def execute(fish,text,proposal,name,argument,allow_actions):
     if name=='tasks':
         from .relationship import task_reply
         return task_reply(fish)
+    if name=='todos':
+        if not re.fullmatch(r'(?:list|completed|all)(?: [1-9][0-9]{0,5})?',argument):raise ModelError('待办查询参数无效，未改动清单。')
+        from .todos import command as todo_command
+        return todo_command(fish,argument)
     if name=='browse':
         if not any(word in text for word in ('网页','浏览','网站','页面','https://','YouTube','youtube','油管','B站','哔哩哔哩','抖音','bilibili','douyin','NASA','NOAA','nasa','noaa')):
             return '还没有创建浏览任务；请说明要查看的网站或页面。'

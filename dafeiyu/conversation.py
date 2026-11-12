@@ -35,6 +35,11 @@ def immediate(text):
     return text in ('/pause','/resume','/life off','/platforms off','/growth off','/watch off','暂停自主任务','继续') or text.startswith(('/cancel ','/quiet '))
 
 
+def standalone(text):
+    from .todos import parse
+    return text.startswith('/') or parse(text) is not None
+
+
 def barrier(fish,key,account,sender):
     initialize(fish)
     with fish.db:fish.db.execute("INSERT OR IGNORE INTO conversation_inbox(inbound_id,account,sender,content,state,created) VALUES (?,?,?,'','control',?)",(key,account,sender,fish.clock()))
@@ -71,7 +76,7 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
         latest_seen=fish.db.execute('SELECT coalesce(max(id),0) FROM conversation_inbox WHERE account=? AND sender=?',(binding['account'],binding['sender'])).fetchone()[0]
         chosen=[];size=0;image_count=0;image_bytes=0
         for row in rows:
-            if chosen and (chosen[0]['content'].startswith('/') or row['content'].startswith('/')):break
+            if chosen and (standalone(chosen[0]['content']) or standalone(row['content'])):break
             if chosen and size+len(row['content'])+2>12000:break
             row_images=json.loads(row['images'] or '[]')
             row_bytes=sum(Path(value).stat().st_size for value in row_images if Path(value).is_file())
@@ -96,7 +101,7 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
     try:
         text='\n'.join(row['content'] for row in chosen)
         images=[value for row in chosen for value in json.loads(row['images'] or '[]')]
-        if not images and not text.startswith('/') and not re.search('换个话题|不用看图|别看图|算了|不看了',text):
+        if not images and not standalone(text) and not re.search('换个话题|不用看图|别看图|算了|不看了',text):
             reset=fish.db.execute("SELECT value FROM settings WHERE key='relationship_reset'").fetchone()
             cutoff=max(now-300,float(reset[0]) if reset else 0)
             prior=fish.db.execute("SELECT images,state,claimed FROM conversation_inbox WHERE id<? AND account=? AND sender=? AND created>? AND images!='[]' AND state IN ('superseded','accepted','interrupted') ORDER BY id DESC LIMIT 1",(ids[0],binding['account'],binding['sender'],cutoff)).fetchone()
@@ -125,7 +130,7 @@ def step(fish,runner=subprocess.run,sleep=time.sleep):
                 fish.db.execute("UPDATE inbound_stats SET finished=?,outcome='superseded' WHERE id=?",(fish.clock(),row['inbound_id']))
             # Preserve the original user input even when native cancellation prevented chat() from saving it.
             original='\n'.join(row['content'] for row in chosen)
-            keep_input=not reset_command and generation(fish)==started_generation and not original.startswith('/')
+            keep_input=not reset_command and generation(fish)==started_generation and not standalone(original)
             if keep_input and not fish.db.execute("SELECT 1 FROM messages WHERE id>? AND role='user' AND content=?",(before,original)).fetchone():fish.db.execute("INSERT INTO messages(role,content,created) VALUES ('user',?,?)",(original,fish.clock()))
             # Never retain an unsent answer as spoken history.
             fish.db.execute("DELETE FROM messages WHERE id>? AND role='assistant'",(before,))
